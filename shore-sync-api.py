@@ -1,3 +1,5 @@
+from googleapiclient.errors import HttpError
+from googleapiclient.discovery import build as gsheet_build
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -20,17 +22,87 @@ class GoogleDriveFileHandler:
         self.credentials_path = credentials_path
         self.shared_drive_id = shared_drive_id
         self.service = None
+        self.sheets_service = None
+        self.drive_service = None
+        self.authenticate()
+
+    def get_sheet_id(self, sheet_ref):
+        """
+        Accepts a Google Sheet name, ID, or full URL. Returns the spreadsheetId if accessible, else None.
+        """
+        # If it's a URL, extract the ID
+        if sheet_ref.startswith("http"):
+            import re
+            match = re.search(r"/d/([a-zA-Z0-9-_]+)", sheet_ref)
+            if match:
+                return match.group(1)
+            else:
+                print(f"Could not extract spreadsheetId from URL: {sheet_ref}")
+                return None
+        # If it's a 44-char ID, just return it
+        if len(sheet_ref) >= 30 and len(sheet_ref) <= 80 and all(c.isalnum() or c in '-_' for c in sheet_ref):
+            return sheet_ref
+        # Otherwise, treat as a name and search
+        try:
+            results = self.drive_service.files().list(
+                q=f"name='{sheet_ref}' and mimeType='application/vnd.google-apps.spreadsheet'",
+                fields="files(id, name)",
+            ).execute()
+            files = results.get("files", [])
+            if files:
+                return files[0]["id"]
+            return None
+        except Exception as e:
+            print(f"Error searching for Google Sheet: {e}")
+            return None
+
+    def create_sheet(self, sheet_name, header):
+        # Create a new Google Sheet and write the header row
+        spreadsheet = {
+            "properties": {"title": sheet_name}
+        }
+        sheet = self.sheets_service.spreadsheets().create(body=spreadsheet, fields="spreadsheetId").execute()
+        sheet_id = sheet["spreadsheetId"]
+        self.append_rows(sheet_id, [header])
+        print(f"Created new Google Sheet: {sheet_name} (ID: {sheet_id})")
+        return sheet_id
+
+    def append_rows(self, sheet_id, rows):
+        # Append rows to the first sheet
+        body = {"values": rows}
+        try:
+            self.sheets_service.spreadsheets().values().append(
+                spreadsheetId=sheet_id,
+                range="A1",
+                valueInputOption="RAW",
+                insertDataOption="INSERT_ROWS",
+                body=body,
+            ).execute()
+        except HttpError as e:
+            print(f"Error appending to Google Sheet: {e}")
+
+    def __init__(self, credentials_path="credentials.json", shared_drive_id=None):
+        self.credentials_path = credentials_path
+        self.shared_drive_id = shared_drive_id
+        self.service = None
         self.authenticate()
 
     def authenticate(self):
-        """Authenticate with Google Drive API using service account only."""
+        """Authenticate with Google Drive and Google Sheets APIs using service account only."""
         from google.oauth2 import service_account
         try:
+            # Use a superset of scopes for both Drive and Sheets
+            scopes = [
+                "https://www.googleapis.com/auth/drive.file",
+                "https://www.googleapis.com/auth/spreadsheets",
+            ]
             creds = service_account.Credentials.from_service_account_file(
-                self.credentials_path, scopes=SCOPES
+                self.credentials_path, scopes=scopes
             )
             self.service = build("drive", "v3", credentials=creds)
-            print("Authenticated with Google Drive using service account.")
+            self.sheets_service = gsheet_build("sheets", "v4", credentials=creds)
+            self.drive_service = build("drive", "v3", credentials=creds)
+            print("Authenticated with Google Drive and Google Sheets using service account.")
         except Exception as e:
             print(f"Error reading service account credentials: {e}")
             raise
@@ -252,9 +324,16 @@ def run_continuous_generation(
     print(f"Interval: {interval_seconds} seconds")
     print(f"Records per batch: {records_per_batch}")
     print("Press Ctrl+C to stop")
+    sheet_ref = None
+    for f in filenames:
+        if f.lower().endswith(".gsheet") or f.lower().endswith(".gsheets") or f.startswith("http") or (len(f) >= 30 and len(f) <= 80 and all(c.isalnum() or c in '-_' for c in f)):
+            sheet_ref = f
+            break
+    sheets_handler = file_handler
     try:
         while True:
             new_data = SyntheticDataGenerator.generate(records_per_batch)
+            # Write to CSV/Parquet as before
             for filename in filenames:
                 if filename.lower().endswith(".csv"):
                     if not os.path.exists(filename):
@@ -262,7 +341,7 @@ def run_continuous_generation(
                     else:
                         new_data.to_csv(filename, mode="a", header=False, index=False)
                     tmp_suffix = ".csv"
-                else:
+                elif filename.lower().endswith(".parquet"):
                     if not os.path.exists(filename):
                         new_data.to_parquet(filename, index=False)
                     else:
@@ -273,7 +352,36 @@ def run_continuous_generation(
                             writer.write_table(table)
                         os.replace(filename + '.tmp', filename)
                     tmp_suffix = ".parquet"
-                # Upload to Google Drive
+                elif filename.lower().endswith(".gsheet") or filename.lower().endswith(".gsheets") or filename.startswith("http") or (len(filename) >= 30 and len(filename) <= 80 and all(c.isalnum() or c in '-_' for c in filename)):
+                    # Google Sheets logic
+                    sheet_id = sheets_handler.get_sheet_id(filename)
+                    # Convert all datetime columns to ISO strings for Sheets
+                    df_for_sheet = new_data.copy()
+                    for col in df_for_sheet.columns:
+                        if pd.api.types.is_datetime64_any_dtype(df_for_sheet[col]) or pd.api.types.is_timedelta64_dtype(df_for_sheet[col]) or pd.api.types.is_object_dtype(df_for_sheet[col]):
+                            # Try to convert Timestamps to string if possible
+                            df_for_sheet[col] = df_for_sheet[col].apply(lambda x: x.isoformat() if hasattr(x, 'isoformat') else str(x))
+                    rows = df_for_sheet.values.tolist()
+                    header = list(df_for_sheet.columns)
+                    if not sheet_id:
+                        print(f"Could not resolve Google Sheet ID for: {filename}")
+                        continue
+                    # Try to append, if fails with 400, maybe sheet is empty, so try to write header first
+                    try:
+                        sheets_handler.append_rows(sheet_id, rows)
+                        print(f"Appended {len(rows)} new records to Google Sheet: {filename}")
+                    except Exception as e:
+                        print(f"Error appending rows, trying to write header first: {e}")
+                        try:
+                            sheets_handler.append_rows(sheet_id, [header])
+                            sheets_handler.append_rows(sheet_id, rows)
+                            print(f"Wrote header and appended {len(rows)} new records to Google Sheet: {filename}")
+                        except Exception as e2:
+                            print(f"Failed to write to Google Sheet: {e2}")
+                    continue
+                else:
+                    continue
+                # Upload to Google Drive for CSV/Parquet
                 with tempfile.NamedTemporaryFile(delete=False, suffix=tmp_suffix) as tmp_file:
                     tmp_path = tmp_file.name
                 shutil.copyfile(filename, tmp_path)
@@ -295,9 +403,14 @@ def main():
         description="Generate synthetic oceanographic data and upload to Google Drive"
     )
     parser.add_argument(
-        "--filename",
-        default="synthetic_oceanographic_data.parquet",
-        help="Name of the parquet file on Google Drive",
+        "--basename",
+        default="synthetic_oceanographic_data",
+        help="Base name for CSV and Parquet files (no extension)",
+    )
+    parser.add_argument(
+        "--sheet",
+        default=None,
+        help="Google Sheet URL, ID, or name to write to (optional)",
     )
     parser.add_argument(
         "--interval", type=int, default=60, help="Interval between uploads in seconds"
@@ -305,7 +418,7 @@ def main():
     parser.add_argument(
         "--records",
         type=int,
-        default=10,
+        default=60,
         help="Number of records to generate per batch",
     )
     parser.add_argument(
@@ -367,17 +480,9 @@ def main():
 
     # Run continuous generation
     # Support uploading to both CSV and Parquet if desired
-    filenames = [args.filename]
-    if args.filename.lower().endswith(".csv"):
-        # Also upload to a matching parquet file
-        parquet_name = args.filename[:-4] + ".parquet"
-        if parquet_name not in filenames:
-            filenames.append(parquet_name)
-    elif args.filename.lower().endswith(".parquet"):
-        # Also upload to a matching csv file
-        csv_name = args.filename[:-8] + ".csv"
-        if csv_name not in filenames:
-            filenames.append(csv_name)
+    filenames = [f"{args.basename}.csv", f"{args.basename}.parquet"]
+    if args.sheet:
+        filenames.append(args.sheet)
     run_continuous_generation(
         file_handler=file_handler,
         filenames=filenames,
