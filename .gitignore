@@ -4,6 +4,7 @@ credentials.json
 # data
 *.parquet
 *.csv
+*.duckdb
 
 # Python-generated files
 __pycache__/

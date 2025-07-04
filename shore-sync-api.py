@@ -1,8 +1,9 @@
 from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build as gsheet_build
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
+from locness_datamanager.synthetic_data import SyntheticDataGenerator
+from locness_datamanager.synthetic_data import SyntheticDataGenerator
 import time
 import os
 import tempfile
