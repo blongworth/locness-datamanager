@@ -238,13 +238,13 @@ class SyntheticDataGenerator:
 
 def run_continuous_generation(
     file_handler,
-    filename="synthetic_oceanographic_data.parquet",
+    filenames=["synthetic_oceanographic_data.parquet"],
     interval_seconds=60,
     records_per_batch=10,
     folder_name=None,
 ):
     print(f"Starting continuous data generation...")
-    print(f"File: {filename}")
+    print(f"Files: {', '.join(filenames)}")
     if folder_name:
         print(f"Folder: {folder_name}")
     if file_handler.shared_drive_id:
@@ -255,28 +255,34 @@ def run_continuous_generation(
     try:
         while True:
             new_data = SyntheticDataGenerator.generate(records_per_batch)
-            if not os.path.exists(filename):
-                # Create new file with the new data
-                new_data.to_parquet(filename, index=False)
-            else:
-                # Append new data to the existing file without reading all data into memory
-                # Parquet does not support append natively, so we use a workaround
-                table = pa.Table.from_pandas(new_data)
-                with pq.ParquetWriter(filename + '.tmp', table.schema) as writer:
-                    for batch in pq.ParquetFile(filename).iter_batches():
-                        writer.write_table(pa.Table.from_batches([batch]))
-                    writer.write_table(table)
-                os.replace(filename + '.tmp', filename)
-            # Upload to Google Drive
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".parquet") as tmp_file:
-                tmp_path = tmp_file.name
-            shutil.copyfile(filename, tmp_path)
-            file_id = file_handler.upload_to_drive(tmp_path, filename, folder_name)
-            os.unlink(tmp_path)
-            if file_id:
-                print(f"Successfully uploaded {len(new_data)} new records at {datetime.now()}")
-            else:
-                print("Failed to upload data")
+            for filename in filenames:
+                if filename.lower().endswith(".csv"):
+                    if not os.path.exists(filename):
+                        new_data.to_csv(filename, index=False)
+                    else:
+                        new_data.to_csv(filename, mode="a", header=False, index=False)
+                    tmp_suffix = ".csv"
+                else:
+                    if not os.path.exists(filename):
+                        new_data.to_parquet(filename, index=False)
+                    else:
+                        table = pa.Table.from_pandas(new_data)
+                        with pq.ParquetWriter(filename + '.tmp', table.schema) as writer:
+                            for batch in pq.ParquetFile(filename).iter_batches():
+                                writer.write_table(pa.Table.from_batches([batch]))
+                            writer.write_table(table)
+                        os.replace(filename + '.tmp', filename)
+                    tmp_suffix = ".parquet"
+                # Upload to Google Drive
+                with tempfile.NamedTemporaryFile(delete=False, suffix=tmp_suffix) as tmp_file:
+                    tmp_path = tmp_file.name
+                shutil.copyfile(filename, tmp_path)
+                file_id = file_handler.upload_to_drive(tmp_path, filename, folder_name)
+                os.unlink(tmp_path)
+                if file_id:
+                    print(f"Successfully uploaded {len(new_data)} new records to {filename} at {datetime.now()}")
+                else:
+                    print(f"Failed to upload data to {filename}")
             time.sleep(interval_seconds)
     except KeyboardInterrupt:
         print("\nStopping data generation...")
@@ -360,9 +366,21 @@ def main():
         print("Then run with --shared-drive-id <ID>")
 
     # Run continuous generation
+    # Support uploading to both CSV and Parquet if desired
+    filenames = [args.filename]
+    if args.filename.lower().endswith(".csv"):
+        # Also upload to a matching parquet file
+        parquet_name = args.filename[:-4] + ".parquet"
+        if parquet_name not in filenames:
+            filenames.append(parquet_name)
+    elif args.filename.lower().endswith(".parquet"):
+        # Also upload to a matching csv file
+        csv_name = args.filename[:-8] + ".csv"
+        if csv_name not in filenames:
+            filenames.append(csv_name)
     run_continuous_generation(
         file_handler=file_handler,
-        filename=args.filename,
+        filenames=filenames,
         interval_seconds=args.interval,
         records_per_batch=args.records,
         folder_name=args.folder,
