@@ -1,0 +1,13 @@
+[project]
+name = "locness-datamanager"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "google-api-python-client>=2.175.0",
+    "google-auth-oauthlib>=1.2.2",
+    "numpy>=2.3.1",
+    "pandas>=2.3.0",
+    "pyarrow>=20.0.0",
+]
