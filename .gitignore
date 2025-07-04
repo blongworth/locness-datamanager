@@ -1,6 +1,10 @@
 # secrets
 credentials.json
 
+# data
+*.parquet
+*.csv
+
 # Python-generated files
 __pycache__/
 *.py[oc]
