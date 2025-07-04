@@ -145,24 +145,144 @@ def add_sample_row(db_path='oceanographic_data.duckdb'):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate synthetic oceanographic data and write to CSV, Parquet, and DuckDB.")
+    parser.add_argument('--path', type=str, default='.', help='Directory to write output files (default: current directory)')
     parser.add_argument('--basename', type=str, default='synthetic_oceanographic_data', help='Base name for output files (no extension)')
-    parser.add_argument('--num', type=int, default=1000, help='Number of records to generate (default: 1000)')
+    parser.add_argument('--num', type=int, default=1000, help='Number of records to generate per batch (default: 1000)')
     parser.add_argument('--freq', type=float, default=1.0, help='Sample frequency in Hz (default: 1.0)')
     parser.add_argument('--table', type=str, default='sensor_data', help='DuckDB table name (default: sensor_data)')
+    parser.add_argument('--continuous', action='store_true', help='Continuously generate and write data every (num * freq) seconds')
     args = parser.parse_args()
 
-    print(f"Generating {args.num} samples at {args.freq} Hz...")
-    df = SyntheticDataGenerator.generate(n_records=args.num, frequency_hz=args.freq)
+    import time
+    import sys
 
-    csv_file = f"{args.basename}.csv"
-    parquet_file = f"{args.basename}.parquet"
-    db_file = f"{args.basename}.duckdb"
-    table_name = args.table
+    def run_once():
+        print(f"Generating {args.num} samples at {args.freq} Hz...")
+        t0 = time.perf_counter()
+        df = SyntheticDataGenerator.generate(n_records=args.num, frequency_hz=args.freq)
+        t1 = time.perf_counter()
+        gen_time = t1 - t0
 
-    print(f"Writing to {csv_file} (CSV)...")
-    SyntheticDataGenerator.to_csv(df, csv_file)
-    print(f"Writing to {parquet_file} (Parquet)...")
-    SyntheticDataGenerator.to_parquet(df, parquet_file)
-    print(f"Writing to {db_file} (DuckDB table: {table_name}) ...")
-    SyntheticDataGenerator.to_duckdb(df, db_file, table_name=table_name)
-    print("Done.")
+        basepath = os.path.join(args.path, args.basename)
+        csv_file = f"{basepath}.csv"
+        parquet_file = f"{basepath}.parquet"
+        db_file = f"{basepath}.duckdb"
+        table_name = args.table
+
+        print(f"Writing to {csv_file} (CSV)...")
+        t_csv0 = time.perf_counter()
+        SyntheticDataGenerator.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
+        t_csv1 = time.perf_counter()
+        csv_time = t_csv1 - t_csv0
+
+        print(f"Writing to {parquet_file} (Parquet)...")
+        t_parquet0 = time.perf_counter()
+        SyntheticDataGenerator.to_parquet(df, parquet_file, append=True)
+        t_parquet1 = time.perf_counter()
+        parquet_time = t_parquet1 - t_parquet0
+
+        print(f"Writing to {db_file} (DuckDB table: {table_name}) ...")
+        t_db0 = time.perf_counter()
+        SyntheticDataGenerator.to_duckdb(df, db_file, table_name=table_name)
+        t_db1 = time.perf_counter()
+        db_time = t_db1 - t_db0
+
+        print("Done.")
+        print("Timing summary:")
+        print(f"  Data generation: {gen_time:.4f} seconds")
+        print(f"  CSV write:       {csv_time:.4f} seconds")
+        print(f"  Parquet write:   {parquet_time:.4f} seconds")
+        print(f"  DuckDB write:    {db_time:.4f} seconds")
+
+    if args.continuous:
+        print("Continuous mode enabled. Press Ctrl+C to stop.")
+        interval = args.num / args.freq if args.freq > 0 else args.num
+        try:
+            # First batch: generate and write immediately
+            print(f"Preparing first batch of {args.num} records...")
+            t0 = time.perf_counter()
+            df = SyntheticDataGenerator.generate(n_records=args.num, frequency_hz=args.freq)
+            t1 = time.perf_counter()
+            gen_time = t1 - t0
+
+            print(f"Writing batch at {datetime.now().isoformat(timespec='seconds')}...")
+            basepath = os.path.join(args.path, args.basename)
+            csv_file = f"{basepath}.csv"
+            parquet_file = f"{basepath}.parquet"
+            db_file = f"{basepath}.duckdb"
+            table_name = args.table
+
+            t_csv0 = time.perf_counter()
+            SyntheticDataGenerator.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
+            t_csv1 = time.perf_counter()
+            csv_time = t_csv1 - t_csv0
+
+            t_parquet0 = time.perf_counter()
+            SyntheticDataGenerator.to_parquet(df, parquet_file, append=True)
+            t_parquet1 = time.perf_counter()
+            parquet_time = t_parquet1 - t_parquet0
+
+            t_db0 = time.perf_counter()
+            SyntheticDataGenerator.to_duckdb(df, db_file, table_name=table_name)
+            t_db1 = time.perf_counter()
+            db_time = t_db1 - t_db0
+
+            print("Done.")
+            print("Timing summary:")
+            print(f"  Data generation: {gen_time:.4f} seconds")
+            print(f"  CSV write:       {csv_time:.4f} seconds")
+            print(f"  Parquet write:   {parquet_time:.4f} seconds")
+            print(f"  DuckDB write:    {db_time:.4f} seconds")
+
+            interval = args.num / args.freq if args.freq > 0 else args.num
+            next_write_time = time.time() + interval
+
+            while True:
+                # Generate the next batch during the sleep interval
+                print(f"Preparing next batch of {args.num} records...")
+                t0 = time.perf_counter()
+                df = SyntheticDataGenerator.generate(n_records=args.num, frequency_hz=args.freq)
+                t1 = time.perf_counter()
+                gen_time = t1 - t0
+
+                now = time.time()
+                sleep_time = next_write_time - now
+                if sleep_time > 0:
+                    print(f"Sleeping {sleep_time:.2f} seconds before writing batch...")
+                    time.sleep(sleep_time)
+                # Write the batch at the correct time
+                print(f"Writing batch at {datetime.now().isoformat(timespec='seconds')}...")
+                basepath = os.path.join(args.path, args.basename)
+                csv_file = f"{basepath}.csv"
+                parquet_file = f"{basepath}.parquet"
+                db_file = f"{basepath}.duckdb"
+                table_name = args.table
+
+                t_csv0 = time.perf_counter()
+                SyntheticDataGenerator.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
+                t_csv1 = time.perf_counter()
+                csv_time = t_csv1 - t_csv0
+
+                t_parquet0 = time.perf_counter()
+                SyntheticDataGenerator.to_parquet(df, parquet_file, append=True)
+                t_parquet1 = time.perf_counter()
+                parquet_time = t_parquet1 - t_parquet0
+
+                t_db0 = time.perf_counter()
+                SyntheticDataGenerator.to_duckdb(df, db_file, table_name=table_name)
+                t_db1 = time.perf_counter()
+                db_time = t_db1 - t_db0
+
+                print("Done.")
+                print("Timing summary:")
+                print(f"  Data generation: {gen_time:.4f} seconds")
+                print(f"  CSV write:       {csv_time:.4f} seconds")
+                print(f"  Parquet write:   {parquet_time:.4f} seconds")
+                print(f"  DuckDB write:    {db_time:.4f} seconds")
+
+                next_write_time += interval
+        except KeyboardInterrupt:
+            print("\nStopped continuous generation.")
+            sys.exit(0)
+    else:
+        run_once()
