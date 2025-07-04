@@ -1,11 +1,15 @@
+# Standard library imports
 import os
+import sys
+import argparse
+from datetime import datetime, timedelta
+
+# Third-party imports
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
-import argparse
-import duckdb
-import pyarrow as pa
-import pyarrow.parquet as pq
+
+# Local imports (for CLI and file writing)
+# Note: FileWriters is imported inside write_outputs to avoid circular import issues
 
 class SyntheticDataGenerator:
     @staticmethod
@@ -39,69 +43,7 @@ class SyntheticDataGenerator:
             data.append(record)
         return pd.DataFrame(data)
 
-    @staticmethod
-    def to_duckdb(df, db_path, table_name="sensor_data", create_table=True):
-        """
-        Write a DataFrame to a DuckDB table.
-        Args:
-            df: pandas.DataFrame
-            db_path: Path to DuckDB database file
-            table_name: Name of the table to write to
-            create_table: If True, create table if it does not exist
-        """
-        con = duckdb.connect(db_path)
-        if create_table:
-            con.execute(f'''
-                CREATE TABLE IF NOT EXISTS {table_name} (
-                    timestamp TIMESTAMP,
-                    lat DOUBLE,
-                    lon DOUBLE,
-                    temp DOUBLE,
-                    salinity DOUBLE,
-                    rhodamine DOUBLE,
-                    pH DOUBLE
-                )
-            ''')
-        sample_data = [tuple(row) for row in df.itertuples(index=False, name=None)]
-        con.executemany(f'''
-            INSERT INTO {table_name} (timestamp, lat, lon, temp, salinity, rhodamine, pH)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', sample_data)
-        con.close()
-        
-    @staticmethod
-    def to_csv(df, filename, mode="w", header=True, index=False):
-        """
-        Write a DataFrame to a CSV file.
-        Args:
-            df: pandas.DataFrame
-            filename: Output CSV file path
-            mode: File mode ('w' for write, 'a' for append)
-            header: Write header row (default True)
-            index: Write row index (default False)
-        """
-        df.to_csv(filename, mode=mode, header=header, index=index)
-
-    @staticmethod
-    def to_parquet(df, filename, append=False):
-        """
-        Write a DataFrame to a Parquet file. If append=True, appends to existing file.
-        Args:
-            df: pandas.DataFrame
-            filename: Output Parquet file path
-            append: If True, append to existing file (default False)
-        """
-        table = pa.Table.from_pandas(df)
-        if not append or not os.path.exists(filename):
-            df.to_parquet(filename, index=False)
-        else:
-            # Append by reading old, writing both to new temp, then replacing
-            tmp_path = filename + ".tmp"
-            with pq.ParquetWriter(tmp_path, table.schema) as writer:
-                for batch in pq.ParquetFile(filename).iter_batches():
-                    writer.write_table(pa.Table.from_batches([batch]))
-                writer.write_table(table)
-            os.replace(tmp_path, filename)
+    # File writing methods moved to file_writers.py
             
 def parse_args():
     """Parse command-line arguments."""
@@ -117,6 +59,7 @@ def parse_args():
 def write_outputs(df, basepath, table_name):
     """Write DataFrame to CSV, Parquet, and DuckDB, timing each step."""
     import time
+    from locness_datamanager.file_writers import FileWriters
     timings = {}
     csv_file = f"{basepath}.csv"
     parquet_file = f"{basepath}.parquet"
@@ -124,19 +67,19 @@ def write_outputs(df, basepath, table_name):
 
     print(f"Writing to {csv_file} (CSV)...")
     t_csv0 = time.perf_counter()
-    SyntheticDataGenerator.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
+    FileWriters.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
     t_csv1 = time.perf_counter()
     timings['csv'] = t_csv1 - t_csv0
 
     print(f"Writing to {parquet_file} (Parquet)...")
     t_parquet0 = time.perf_counter()
-    SyntheticDataGenerator.to_parquet(df, parquet_file, append=True)
+    FileWriters.to_parquet(df, parquet_file, append=True)
     t_parquet1 = time.perf_counter()
     timings['parquet'] = t_parquet1 - t_parquet0
 
     print(f"Writing to {db_file} (DuckDB table: {table_name}) ...")
     t_db0 = time.perf_counter()
-    SyntheticDataGenerator.to_duckdb(df, db_file, table_name=table_name)
+    FileWriters.to_duckdb(df, db_file, table_name=table_name)
     t_db1 = time.perf_counter()
     timings['duckdb'] = t_db1 - t_db0
 
@@ -157,7 +100,6 @@ def generate_batch(num, freq):
 
 def main():
     import time
-    import sys
     from datetime import datetime
     args = parse_args()
     basepath = os.path.join(args.path, args.basename)
