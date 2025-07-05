@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
+from locness_datamanager.resample import add_ph_moving_average
 
 
 def generate(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, frequency_hz=1.0):
@@ -105,6 +106,10 @@ def generate_batch(num, freq):
     delta_seconds = 1.0 / freq if freq > 0 else 1.0
     start_time = datetime.now() - timedelta(seconds=(num - 1) * delta_seconds)
     df = generate(n_records=num, frequency_hz=freq, start_time=start_time)
+    # Add moving average of pH
+    config = get_config()
+    window_seconds = config.get('ph_ma_window', 120)
+    df = add_ph_moving_average(df, window_seconds=window_seconds, freq_hz=freq)
     t1 = time.perf_counter()
     print(f"  Data generation: {t1-t0:.4f} seconds")
     return df
@@ -139,6 +144,7 @@ def main():
     else:
         df = generate_batch(args.num, args.freq)
         write_outputs(df, basepath, args.table, sqlite_file)
+
 
 if __name__ == "__main__":
     main()

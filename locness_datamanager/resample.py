@@ -1,3 +1,4 @@
+from locness_datamanager.config import get_config
 import sqlite3
 import pandas as pd
 import time
@@ -40,6 +41,25 @@ def load_and_resample_sqlite(sqlite_path, resample_interval='2S'):
     # Reorder columns
     cols = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity']
     df = df[cols]
+    # Add moving average of pH
+    config = get_config()
+    window_seconds = config.get('ph_ma_window', 120)
+    freq_hz = config.get('ph_freq', 0.5)
+    df = add_ph_moving_average(df, window_seconds=window_seconds, freq_hz=freq_hz)
+    return df
+
+def add_ph_moving_average(df, window_seconds=120, freq_hz=1.0):
+    """
+    Add a moving average column for pH to the DataFrame.
+    window_seconds: window size in seconds
+    freq_hz: sampling frequency in Hz
+    """
+    if 'timestamp' in df.columns:
+        # Sort by timestamp to ensure correct rolling
+        df = df.sort_values('timestamp')
+        df = df.reset_index(drop=True)
+    window_size = max(1, int(window_seconds * freq_hz))
+    df['ph_ma'] = df['ph'].rolling(window=window_size, min_periods=1).mean()
     return df
 
 def poll_new_records(

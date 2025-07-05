@@ -54,13 +54,14 @@ def to_duckdb(df, db_path, table_name="sensor_data", create_table=True):
                 temp DOUBLE,
                 salinity DOUBLE,
                 rhodamine DOUBLE,
-                ph DOUBLE
+                ph DOUBLE,
+                ph_ma DOUBLE
             )
         ''')
     sample_data = [tuple(row) for row in df.itertuples(index=False, name=None)]
     con.executemany(f'''
-        INSERT INTO {table_name} (timestamp, lat, lon, temp, salinity, rhodamine, ph)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO {table_name} (timestamp, lat, lon, temp, salinity, rhodamine, ph, ph_ma)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ''', sample_data)
     con.close()
 

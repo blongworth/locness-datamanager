@@ -1,3 +1,4 @@
+
 [defaults]
 path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/"
 basename = "fake-data"
@@ -5,3 +6,5 @@ num = 30
 freq = 0.5
 table = "sensor_data"
 continuous = true
+ph_ma_window = 120  # window in seconds for ph moving average
+ph_freq = 0.5  # frequency in Hz for ph moving average
