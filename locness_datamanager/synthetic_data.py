@@ -9,7 +9,7 @@ from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
 
 
-def generate(n_records=1, base_lat=40.7128, base_lon=-74.0060, start_time=None, frequency_hz=1.0):
+def generate(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, frequency_hz=1.0):
     """
     Generate synthetic oceanographic data.
     Args:
@@ -26,11 +26,19 @@ def generate(n_records=1, base_lat=40.7128, base_lon=-74.0060, start_time=None, 
         current_time = start_time
     delta_seconds = 1.0 / frequency_hz if frequency_hz > 0 else 1.0
     data = []
+    lat = base_lat
+    lon = base_lon
     for i in range(n_records):
+        # Move a random number of degrees (small, to simulate realistic movement)
+        delta_lat = np.random.uniform(-0.0005, 0.0005)  # ~±50 meters in degrees latitude
+        delta_lon = np.random.uniform(-0.0005, 0.0005)  # ~±50 meters in degrees longitude
+        if i > 0:
+            lat += delta_lat
+            lon += delta_lon
         record = {
             "timestamp": current_time + timedelta(seconds=i * delta_seconds),
-            "lat": base_lat + np.random.normal(0, 0.001),
-            "lon": base_lon + np.random.normal(0, 0.001),
+            "lat": lat,
+            "lon": lon,
             "temp": 15 + 5 * np.sin(i * 0.02) + np.random.normal(0, 0.5),
             "salinity": 35 + 2 * np.sin(i * 0.015) + np.random.normal(0, 0.2),
             "rhodamine": min(500, np.random.exponential(scale=1.25)),
