@@ -1,52 +1,44 @@
-# Standard library imports
 import os
 import sys
+import time
 import argparse
 from datetime import datetime, timedelta
-
-# Third-party imports
 import numpy as np
 import pandas as pd
-
-# Local imports (for CLI and file writing)
-# Note: FileWriters is imported inside write_outputs to avoid circular import issues
 from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
 
-class SyntheticDataGenerator:
-    @staticmethod
-    def generate(n_records=1, base_lat=40.7128, base_lon=-74.0060, start_time=None, frequency_hz=1.0):
-        """
-        Generate synthetic oceanographic data.
-        Args:
-            n_records: Number of records to generate
-            base_lat: Base latitude
-            base_lon: Base longitude
-            start_time: Optional datetime to start timestamps
-        Returns:
-            pandas.DataFrame with synthetic data
-        """
-        if start_time is None:
-            current_time = datetime.now()
-        else:
-            current_time = start_time
-        delta_seconds = 1.0 / frequency_hz if frequency_hz > 0 else 1.0
-        data = []
-        for i in range(n_records):
-            record = {
-                "timestamp": current_time + timedelta(seconds=i * delta_seconds),
-                "lat": base_lat + np.random.normal(0, 0.001),
-                "lon": base_lon + np.random.normal(0, 0.001),
-                "temp": 15 + 5 * np.sin(i * 0.02) + np.random.normal(0, 0.5),
-                "salinity": 35 + 2 * np.sin(i * 0.015) + np.random.normal(0, 0.2),
-                "rhodamine": min(500, np.random.exponential(scale=1.25)),
-                "ph": 8.1 + 0.3 * np.sin(i * 0.025) + np.random.normal(0, 0.05),
-            }
-            data.append(record)
-        return pd.DataFrame(data)
 
-    # File writing methods moved to file_writers.py
-            
+def generate(n_records=1, base_lat=40.7128, base_lon=-74.0060, start_time=None, frequency_hz=1.0):
+    """
+    Generate synthetic oceanographic data.
+    Args:
+        n_records: Number of records to generate
+        base_lat: Base latitude
+        base_lon: Base longitude
+        start_time: Optional datetime to start timestamps
+    Returns:
+        pandas.DataFrame with synthetic data
+    """
+    if start_time is None:
+        current_time = datetime.now()
+    else:
+        current_time = start_time
+    delta_seconds = 1.0 / frequency_hz if frequency_hz > 0 else 1.0
+    data = []
+    for i in range(n_records):
+        record = {
+            "timestamp": current_time + timedelta(seconds=i * delta_seconds),
+            "lat": base_lat + np.random.normal(0, 0.001),
+            "lon": base_lon + np.random.normal(0, 0.001),
+            "temp": 15 + 5 * np.sin(i * 0.02) + np.random.normal(0, 0.5),
+            "salinity": 35 + 2 * np.sin(i * 0.015) + np.random.normal(0, 0.2),
+            "rhodamine": min(500, np.random.exponential(scale=1.25)),
+            "ph": 8.1 + 0.3 * np.sin(i * 0.025) + np.random.normal(0, 0.05),
+        }
+        data.append(record)
+    return pd.DataFrame(data)
+
 def parse_args():
     """Parse command-line arguments."""
     config = get_config()
@@ -61,7 +53,6 @@ def parse_args():
 
 def write_outputs(df, basepath, table_name):
     """Write DataFrame to CSV, Parquet, and DuckDB, timing each step."""
-    import time
     timings = {}
     csv_file = f"{basepath}.csv"
     parquet_file = f"{basepath}.parquet"
@@ -92,17 +83,17 @@ def write_outputs(df, basepath, table_name):
 
 def generate_batch(num, freq):
     """Generate a batch of synthetic data and return the DataFrame and timing."""
-    import time
     print(f"Generating {num} samples at {freq} Hz...")
     t0 = time.perf_counter()
-    df = SyntheticDataGenerator.generate(n_records=num, frequency_hz=freq)
+    # set start_time so last sample is now
+    delta_seconds = 1.0 / freq if freq > 0 else 1.0
+    start_time = datetime.now() - timedelta(seconds=(num - 1) * delta_seconds)
+    df = generate(n_records=num, frequency_hz=freq, start_time=start_time)
     t1 = time.perf_counter()
     print(f"  Data generation: {t1-t0:.4f} seconds")
     return df
 
 def main():
-    import time
-    from datetime import datetime
     args = parse_args()
     basepath = os.path.join(args.path, args.basename)
     if args.continuous:
