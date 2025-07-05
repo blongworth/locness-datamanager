@@ -50,21 +50,23 @@ def generate(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, freque
 def parse_args():
     """Parse command-line arguments."""
     config = get_config()
-    parser = argparse.ArgumentParser(description="Generate synthetic oceanographic data and write to CSV, Parquet, and DuckDB.")
+    parser = argparse.ArgumentParser(description="Generate synthetic oceanographic data and write to CSV, Parquet, DuckDB, and SQLite.")
     parser.add_argument('--path', type=str, default=config['path'], help='Directory to write output files (default: current directory)')
     parser.add_argument('--basename', type=str, default=config['basename'], help='Base name for output files (no extension)')
     parser.add_argument('--num', type=int, default=config['num'], help='Number of records to generate per batch (default: 1000)')
     parser.add_argument('--freq', type=float, default=config['freq'], help='Sample frequency in Hz (default: 1.0)')
-    parser.add_argument('--table', type=str, default=config['table'], help='DuckDB table name (default: sensor_data)')
+    parser.add_argument('--table', type=str, default=config['table'], help='DuckDB/SQLite table name (default: sensor_data)')
+    parser.add_argument('--sqlite', type=str, default=None, help='Path to SQLite output file (default: {basename}.sqlite in output path)')
     parser.add_argument('--continuous', action='store_true', default=config['continuous'], help='Continuously generate and write data every (num * freq) seconds')
     return parser.parse_args()
 
-def write_outputs(df, basepath, table_name):
-    """Write DataFrame to CSV, Parquet, and DuckDB, timing each step."""
+def write_outputs(df, basepath, table_name, sqlite_file=None):
+    """Write DataFrame to CSV, Parquet, DuckDB, and SQLite, timing each step."""
     timings = {}
     csv_file = f"{basepath}.csv"
     parquet_file = f"{basepath}.parquet"
     db_file = f"{basepath}.duckdb"
+    sqlite_file = sqlite_file or f"{basepath}.sqlite"
 
     print(f"Writing to {csv_file} (CSV)...")
     t_csv0 = time.perf_counter()
@@ -83,6 +85,12 @@ def write_outputs(df, basepath, table_name):
     file_writers.to_duckdb(df, db_file, table_name=table_name)
     t_db1 = time.perf_counter()
     timings['duckdb'] = t_db1 - t_db0
+
+    print(f"Writing to {sqlite_file} (SQLite table: {table_name}) ...")
+    t_sqlite0 = time.perf_counter()
+    file_writers.to_sqlite(df, sqlite_file, table_name=table_name)
+    t_sqlite1 = time.perf_counter()
+    timings['sqlite'] = t_sqlite1 - t_sqlite0
 
     print("Done.")
     print("Timing summary:")
@@ -104,6 +112,7 @@ def generate_batch(num, freq):
 def main():
     args = parse_args()
     basepath = os.path.join(args.path, args.basename)
+    sqlite_file = args.sqlite or f"{basepath}.sqlite"
     if args.continuous:
         print("Continuous mode enabled. Press Ctrl+C to stop.")
         interval = args.num / args.freq if args.freq > 0 else args.num
@@ -111,7 +120,7 @@ def main():
             # First batch: generate and write immediately
             print(f"Preparing first batch of {args.num} records...")
             df = generate_batch(args.num, args.freq)
-            write_outputs(df, basepath, args.table)
+            write_outputs(df, basepath, args.table, sqlite_file)
             next_write_time = time.time() + interval
             while True:
                 print(f"Preparing next batch of {args.num} records...")
@@ -122,14 +131,14 @@ def main():
                     print(f"Sleeping {sleep_time:.2f} seconds before writing batch...")
                     time.sleep(sleep_time)
                 print(f"Writing batch at {datetime.now().isoformat(timespec='seconds')}...")
-                write_outputs(df, basepath, args.table)
+                write_outputs(df, basepath, args.table, sqlite_file)
                 next_write_time += interval
         except KeyboardInterrupt:
             print("\nStopped continuous generation.")
             sys.exit(0)
     else:
         df = generate_batch(args.num, args.freq)
-        write_outputs(df, basepath, args.table)
+        write_outputs(df, basepath, args.table, sqlite_file)
 
 if __name__ == "__main__":
     main()
