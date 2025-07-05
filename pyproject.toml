@@ -12,3 +12,6 @@ dependencies = [
     "pandas>=2.3.0",
     "pyarrow>=20.0.0",
 ]
+
+[project.scripts]
+generate = "locness_datamanager.synthetic_data:main"
