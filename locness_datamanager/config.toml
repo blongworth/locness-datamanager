@@ -1,0 +1,7 @@
+[defaults]
+path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/"
+basename = "mydata"
+num = 30
+freq = 0.5
+table = "sensor_data"
+continuous = true

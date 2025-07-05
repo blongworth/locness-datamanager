@@ -3,6 +3,7 @@ import pandas as pd
 import time
 from typing import Optional
 import os
+from locness_datamanager import file_writers
 
 def read_table(conn, table, columns):
     query = f"SELECT {', '.join(columns)} FROM {table}"
@@ -77,7 +78,6 @@ def poll_new_records(
 def write_outputs(df, basepath, table_name):
     """Write DataFrame to CSV, Parquet, and DuckDB, timing each step."""
     import time
-    from locness_datamanager.file_writers import FileWriters
     timings = {}
     csv_file = f"{basepath}.csv"
     parquet_file = f"{basepath}.parquet"
@@ -85,19 +85,19 @@ def write_outputs(df, basepath, table_name):
 
     print(f"Writing to {csv_file} (CSV)...")
     t_csv0 = time.perf_counter()
-    FileWriters.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
+    file_writers.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
     t_csv1 = time.perf_counter()
     timings['csv'] = t_csv1 - t_csv0
 
     print(f"Writing to {parquet_file} (Parquet)...")
     t_parquet0 = time.perf_counter()
-    FileWriters.to_parquet(df, parquet_file, append=True)
+    file_writers.to_parquet(df, parquet_file, append=True)
     t_parquet1 = time.perf_counter()
     timings['parquet'] = t_parquet1 - t_parquet0
 
     print(f"Writing to {db_file} (DuckDB table: {table_name}) ...")
     t_db0 = time.perf_counter()
-    FileWriters.to_duckdb(df, db_file, table_name=table_name)
+    file_writers.to_duckdb(df, db_file, table_name=table_name)
     t_db1 = time.perf_counter()
     timings['duckdb'] = t_db1 - t_db0
 

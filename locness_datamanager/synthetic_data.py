@@ -10,6 +10,8 @@ import pandas as pd
 
 # Local imports (for CLI and file writing)
 # Note: FileWriters is imported inside write_outputs to avoid circular import issues
+from locness_datamanager.config import get_config
+from locness_datamanager import file_writers
 
 class SyntheticDataGenerator:
     @staticmethod
@@ -47,19 +49,19 @@ class SyntheticDataGenerator:
             
 def parse_args():
     """Parse command-line arguments."""
+    config = get_config()
     parser = argparse.ArgumentParser(description="Generate synthetic oceanographic data and write to CSV, Parquet, and DuckDB.")
-    parser.add_argument('--path', type=str, default='.', help='Directory to write output files (default: current directory)')
-    parser.add_argument('--basename', type=str, default='synthetic_oceanographic_data', help='Base name for output files (no extension)')
-    parser.add_argument('--num', type=int, default=1000, help='Number of records to generate per batch (default: 1000)')
-    parser.add_argument('--freq', type=float, default=1.0, help='Sample frequency in Hz (default: 1.0)')
-    parser.add_argument('--table', type=str, default='sensor_data', help='DuckDB table name (default: sensor_data)')
-    parser.add_argument('--continuous', action='store_true', help='Continuously generate and write data every (num * freq) seconds')
+    parser.add_argument('--path', type=str, default=config['path'], help='Directory to write output files (default: current directory)')
+    parser.add_argument('--basename', type=str, default=config['basename'], help='Base name for output files (no extension)')
+    parser.add_argument('--num', type=int, default=config['num'], help='Number of records to generate per batch (default: 1000)')
+    parser.add_argument('--freq', type=float, default=config['freq'], help='Sample frequency in Hz (default: 1.0)')
+    parser.add_argument('--table', type=str, default=config['table'], help='DuckDB table name (default: sensor_data)')
+    parser.add_argument('--continuous', action='store_true', default=config['continuous'], help='Continuously generate and write data every (num * freq) seconds')
     return parser.parse_args()
 
 def write_outputs(df, basepath, table_name):
     """Write DataFrame to CSV, Parquet, and DuckDB, timing each step."""
     import time
-    from locness_datamanager.file_writers import FileWriters
     timings = {}
     csv_file = f"{basepath}.csv"
     parquet_file = f"{basepath}.parquet"
@@ -67,19 +69,19 @@ def write_outputs(df, basepath, table_name):
 
     print(f"Writing to {csv_file} (CSV)...")
     t_csv0 = time.perf_counter()
-    FileWriters.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
+    file_writers.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
     t_csv1 = time.perf_counter()
     timings['csv'] = t_csv1 - t_csv0
 
     print(f"Writing to {parquet_file} (Parquet)...")
     t_parquet0 = time.perf_counter()
-    FileWriters.to_parquet(df, parquet_file, append=True)
+    file_writers.to_parquet(df, parquet_file, append=True)
     t_parquet1 = time.perf_counter()
     timings['parquet'] = t_parquet1 - t_parquet0
 
     print(f"Writing to {db_file} (DuckDB table: {table_name}) ...")
     t_db0 = time.perf_counter()
-    FileWriters.to_duckdb(df, db_file, table_name=table_name)
+    file_writers.to_duckdb(df, db_file, table_name=table_name)
     t_db1 = time.perf_counter()
     timings['duckdb'] = t_db1 - t_db0
 
