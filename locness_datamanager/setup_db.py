@@ -12,27 +12,53 @@ def setup_sqlite_db(db_path):
     # Create fluorometer table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS fluorometer (
-            timestamp TEXT PRIMARY KEY,
-            lat REAL,
-            lon REAL,
-            rhodamine REAL
+          timestamp INTEGER PRIMARY KEY,
+          latitude REAL, 
+          longitude REAL, 
+          gain INTEGER, 
+          voltage REAL, 
+          concentration REAL)
         );
     ''')
 
     # Create ph table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS ph (
-            timestamp TEXT PRIMARY KEY,
-            ph REAL
+            pc_timestamp TEXT PRIMARY KEY,
+            samp_num INTEGER,
+            ph_timestamp TEXT, 
+            v_bat REAL,
+            v_bias_pos REAL,
+            v_bias_neg REAL, 
+            t_board REAL,
+            h_board REAL,
+            vrse REAL,
+            vrse_std REAL, 
+            cevk REAL,
+            cevk_std REAL,
+            ce_ik REAL,
+            i_sub REAL,
+            cal_temp REAL,
+            cal_sal REAL,
+            k0 REAL,
+            k2 REAL,
+            ph_free REAL,
+            ph_total REAL
         );
     ''')
 
     # Create tsg table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS tsg (
-            timestamp TEXT PRIMARY KEY,
+            timestamp INTEGER PRIMARY KEY,
+            scan_no INTEGER,
+            cond REAL,
             temp REAL,
-            salinity REAL
+            hull_temp REAL,
+            time_elapsed REAL,
+            nmea_time INTEGER,
+            latitude REAL,
+            longitude REAL
         );
     ''')
 
