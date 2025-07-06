@@ -9,6 +9,7 @@ from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
 from locness_datamanager.resample import add_ph_moving_average
 
+# TODO: add synthetic raw data to ph, tsg, and fluorometer tables
 
 def generate(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, frequency_hz=1.0):
     """

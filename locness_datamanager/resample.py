@@ -6,6 +6,12 @@ from typing import Optional
 import os
 from locness_datamanager import file_writers
 
+# TODO: calculate salinity from conductivity and temperature if needed
+# TODO: add moving average for pH
+# TODO: correct field names to match database schema
+# TODO: add error handling for database connection and queries
+# TODO: use integer timestamps for SQLite compatibility
+
 def read_table(conn, table, columns):
     query = f"SELECT {', '.join(columns)} FROM {table}"
     return pd.read_sql_query(query, conn, parse_dates=["timestamp"])
