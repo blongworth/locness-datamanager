@@ -11,6 +11,7 @@ from locness_datamanager import file_writers
 # TODO: correct field names to match database schema
 # TODO: add error handling for database connection and queries
 # TODO: use integer timestamps for SQLite compatibility
+# TODO: use time bucket resampling in sqlite (test speed)
 
 def read_table(conn, table, columns):
     query = f"SELECT {', '.join(columns)} FROM {table}"
