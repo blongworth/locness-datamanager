@@ -17,4 +17,25 @@ wheels/
 # Virtual environments
 .venv
 
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+.hypothesis/
+.cache
+nosetests.xml
+junit.xml
+test-results/
+test-reports/
+
+# IDE and Editor
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
 
