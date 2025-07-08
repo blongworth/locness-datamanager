@@ -27,4 +27,5 @@ def get_config():
     config['continuous'] = os.environ.get('LOCNESS_CONTINUOUS', str(config.get('continuous', False))).lower() in ('1', 'true', 'yes')
     config['ph_ma_window'] = int(os.environ.get('LOCNESS_PH_MA_WINDOW', config.get('ph_ma_window', 120)))
     config['ph_freq'] = float(os.environ.get('LOCNESS_PH_FREQ', config.get('ph_freq', 0.5)))
+    config['partition_hours'] = float(os.environ.get('LOCNESS_PARTITION_HOURS', config.get('partition_hours', 12)))
     return config
