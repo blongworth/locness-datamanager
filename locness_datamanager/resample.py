@@ -15,7 +15,11 @@ from locness_datamanager import file_writers
 
 def read_table(conn, table, columns):
     query = f"SELECT {', '.join(columns)} FROM {table}"
-    return pd.read_sql_query(query, conn, parse_dates=["timestamp"])
+    df = pd.read_sql_query(query, conn)
+    # Convert integer timestamps to datetime if needed
+    if 'timestamp' in df.columns and df['timestamp'].dtype in ['int64', 'int32']:
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+    return df
 
 def load_and_resample_sqlite(sqlite_path, resample_interval='2S'):
     """
@@ -133,6 +137,46 @@ def write_outputs(df, basepath, table_name):
     for k, v in timings.items():
         print(f"  {k.capitalize()} write: {v:.4f} seconds")
 
+def write_resampled_to_sqlite(df, sqlite_path):
+    """
+    Write resampled DataFrame to the resampled_data table in SQLite with integer timestamps.
+    
+    Args:
+        df: DataFrame with columns: timestamp, lat, lon, rhodamine, ph, temp, salinity, ph_ma
+        sqlite_path: Path to SQLite database
+    """
+    # Convert datetime timestamps to Unix timestamps (integers)
+    df_copy = df.copy()
+    if pd.api.types.is_datetime64_any_dtype(df_copy['timestamp']):
+        df_copy['timestamp'] = df_copy['timestamp'].astype('int64') // 10**9  # Convert to Unix timestamp
+    
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        # Insert data into resampled_data table
+        df_copy.to_sql('resampled_data', conn, if_exists='append', index=False)
+        print(f"Successfully wrote {len(df_copy)} resampled records to resampled_data table")
+    except Exception as e:
+        print(f"Error writing to resampled_data table: {e}")
+    finally:
+        conn.close()
+
+def write_resampled_data_to_sqlite(sqlite_path, resample_interval='2S', output_table='resampled_data'):
+    """
+    Load, resample data, and write directly to the resampled_data table in SQLite.
+    
+    Args:
+        sqlite_path: Path to SQLite database
+        resample_interval: Resample interval (default '2S')
+        output_table: Name of output table (default 'resampled_data')
+    """
+    # Load and resample data
+    df = load_and_resample_sqlite(sqlite_path, resample_interval)
+    
+    # Write to the resampled_data table
+    write_resampled_to_sqlite(df, sqlite_path)
+    
+    return df
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Resample and combine SQLite sensor tables, write to CSV, Parquet, and DuckDB.")
@@ -144,6 +188,7 @@ def main():
     parser.add_argument('--poll', action='store_true', help='Continuously poll for new records')
     parser.add_argument('--interval', type=float, default=2.0, help='Polling interval in seconds (default: 2.0)')
     parser.add_argument('--stop-after', type=float, default=None, help='Stop polling after this many seconds (default: run forever)')
+    parser.add_argument('--write-to-sqlite', action='store_true', help='Write resampled data back to SQLite database')
     args = parser.parse_args()
 
     basepath = os.path.join(args.path, args.basename)
@@ -156,12 +201,16 @@ def main():
                 if not new_df.empty:
                     print(f"Writing {len(new_df)} new records...")
                     write_outputs(new_df, basepath, args.table)
+                    if args.write_to_sqlite:
+                        write_resampled_to_sqlite(new_df, args.sqlite_path)
                     last_ts = new_df['timestamp'].max()
         except KeyboardInterrupt:
             print("\nStopped polling.")
     else:
         df = load_and_resample_sqlite(args.sqlite_path, resample_interval=args.resample)
         write_outputs(df, basepath, args.table)
+        if args.write_to_sqlite:
+            write_resampled_to_sqlite(df, args.sqlite_path)
 
 if __name__ == "__main__":
     main()

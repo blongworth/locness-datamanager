@@ -8,6 +8,7 @@ import pandas as pd
 from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
 from locness_datamanager.resample import add_ph_moving_average
+import sqlite3
 
 # TODO: add synthetic raw data to ph, tsg, and fluorometer tables
 
@@ -107,7 +108,11 @@ def write_outputs(df,
     if write_sqlite:
         print(f"Writing to {sqlite_file} (SQLite table: {table_name}) ...")
         t_sqlite0 = time.perf_counter()
-        file_writers.to_sqlite(df, sqlite_file, table_name=table_name)
+        # If writing to resampled_data table, use special function with integer timestamps
+        if table_name == 'resampled_data':
+            write_to_resampled_data_table(df, sqlite_file)
+        else:
+            file_writers.to_sqlite(df, sqlite_file, table_name=table_name)
         t_sqlite1 = time.perf_counter()
         timings['sqlite'] = t_sqlite1 - t_sqlite0
 
@@ -131,6 +136,36 @@ def generate_batch(num, freq):
     t1 = time.perf_counter()
     print(f"  Data generation: {t1-t0:.4f} seconds")
     return df
+
+def write_to_resampled_data_table(df, sqlite_path):
+    """
+    Write DataFrame to the resampled_data table with integer timestamps.
+    
+    Args:
+        df: DataFrame with timestamp column and other sensor data
+        sqlite_path: Path to SQLite database
+    """
+    df_copy = df.copy()
+    
+    # Convert datetime timestamps to Unix timestamps (integers)
+    if pd.api.types.is_datetime64_any_dtype(df_copy['timestamp']):
+        df_copy['timestamp'] = df_copy['timestamp'].astype('int64') // 10**9
+    
+    # Ensure column order matches the resampled_data table
+    expected_columns = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity', 'ph_ma']
+    
+    # Only keep columns that exist in the DataFrame and are expected
+    available_columns = [col for col in expected_columns if col in df_copy.columns]
+    df_copy = df_copy[available_columns]
+    
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        df_copy.to_sql('resampled_data', conn, if_exists='append', index=False)
+        print(f"Successfully wrote {len(df_copy)} records to resampled_data table")
+    except Exception as e:
+        print(f"Error writing to resampled_data table: {e}")
+    finally:
+        conn.close()
 
 def main():
     args = parse_args()

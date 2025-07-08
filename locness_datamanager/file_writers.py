@@ -105,11 +105,19 @@ def to_sqlite(df, db_path, table_name="sensor_data", create_table=True):
         table_name: Name of the table to write to
         create_table: If True, create table if it does not exist
     """
+    import pandas as pd
+    
+    df_copy = df.copy()
+    
+    # Convert datetime timestamps to Unix timestamps (integers) for SQLite compatibility
+    if 'timestamp' in df_copy.columns and pd.api.types.is_datetime64_any_dtype(df_copy['timestamp']):
+        df_copy['timestamp'] = df_copy['timestamp'].astype('int64') // 10**9
+    
     conn = sqlite3.connect(db_path)
     if create_table:
         # Use pandas to_sql with if_exists='append' and let pandas create table if needed
-        df.to_sql(table_name, conn, if_exists='append', index=False)
+        df_copy.to_sql(table_name, conn, if_exists='append', index=False)
     else:
         # Assume table exists, just append
-        df.to_sql(table_name, conn, if_exists='append', index=False)
+        df_copy.to_sql(table_name, conn, if_exists='append', index=False)
     conn.close()

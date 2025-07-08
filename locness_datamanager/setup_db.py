@@ -17,7 +17,7 @@ def setup_sqlite_db(db_path):
           longitude REAL, 
           gain INTEGER, 
           voltage REAL, 
-          concentration REAL)
+          concentration REAL
         );
     ''')
 
@@ -65,7 +65,7 @@ def setup_sqlite_db(db_path):
     # Create resampled_data table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS resampled_data (
-            timestamp TEXT PRIMARY KEY,
+            timestamp INTEGER PRIMARY KEY,
             lat REAL,
             lon REAL,
             rhodamine REAL,
