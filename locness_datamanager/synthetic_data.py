@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
-from locness_datamanager.resample import add_ph_moving_average
+from locness_datamanager.resample import add_ph_moving_average, load_and_resample_sqlite, write_resampled_to_sqlite
 import sqlite3
 
 # Functions for generating synthetic data for fluorometer, ph, and tsg tables
@@ -213,15 +213,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Generate synthetic oceanographic data and write to CSV, Parquet, DuckDB, and SQLite.")
     parser.add_argument('--path', type=str, default=config['path'], help='Directory to write output files (default: current directory)')
     parser.add_argument('--basename', type=str, default=config['basename'], help='Base name for output files (no extension)')
-    parser.add_argument('--num', type=int, default=config['num'], help='Number of records to generate per batch (default: 1000)')
-    parser.add_argument('--freq', type=float, default=config['freq'], help='Sample frequency in Hz (default: 1.0)')
+    parser.add_argument('--time', type=float, default=60.0, help='Duration of data to generate in seconds (default: 60)')
     parser.add_argument('--table', type=str, default=config['table'], help='DuckDB/SQLite table name (default: sensor_data)')
-    parser.add_argument('--continuous', action='store_true', default=config['continuous'], help='Continuously generate and write data every (num * freq) seconds')
-    parser.add_argument('--csv', action='store_true', help='Write CSV output')
-    parser.add_argument('--parquet', action='store_true', help='Write Parquet output')
-    parser.add_argument('--duckdb', action='store_true', help='Write DuckDB output')
-    parser.add_argument('--sqlite', action='store_true', help='Write SQLite output')
-    parser.add_argument('--raw-sensors', action='store_true', help='Generate and write raw sensor data to fluorometer, ph, and tsg tables')
+    parser.add_argument('--continuous', action='store_true', default=config['continuous'], help='Continuously generate and write data every "time" seconds')
+    parser.add_argument('--csv', action='store_true', help='Write CSV output for resampled data')
+    parser.add_argument('--parquet', action='store_true', help='Write Parquet output for resampled data')
+    parser.add_argument('--sqlite', action='store_true', help='Write SQLite output for resampled data')
+    parser.add_argument('--resample-interval', type=str, default='2s', help='Resample interval for resampled data (default: 2s)')
     parser.add_argument('--lat', type=float, default=42.5, help='Base latitude for GPS coordinates (default: 42.5)')
     parser.add_argument('--lon', type=float, default=-69.5, help='Base longitude for GPS coordinates (default: -69.5)')
     return parser.parse_args()
@@ -389,7 +387,7 @@ def generate_raw_sensor_batch(num, freq, start_time=None, base_lat=42.5, base_lo
     )
     
     # pH sensors typically sample much slower
-    ph_freq = min(freq, 0.1)  # Max 0.1 Hz for pH sensor
+    ph_freq = min(freq, 0.5)  # Max 0.5 Hz for pH sensor
     ph_records = max(1, int(num * ph_freq / freq))
     ph_df = generate_ph_data(
         n_records=ph_records, 
@@ -414,81 +412,282 @@ def generate_raw_sensor_batch(num, freq, start_time=None, base_lat=42.5, base_lo
         'tsg': tsg_df
     }
 
+def generate_time_based_sensor_data(duration_seconds, base_lat=42.5, base_lon=-69.5, start_time=None):
+    """
+    Generate sensor data for a specified duration using default sampling rates for each sensor.
+    
+    Args:
+        duration_seconds: Duration of data to generate in seconds
+        base_lat: Base latitude for GPS coordinates
+        base_lon: Base longitude for GPS coordinates  
+        start_time: Optional start time (defaults to now - duration)
+    
+    Returns:
+        dict: Dictionary containing DataFrames for each sensor type
+    """
+    print(f"Generating {duration_seconds} seconds of sensor data...")
+    t0 = time.perf_counter()
+    
+    # Set start_time so last sample is now
+    if start_time is None:
+        start_time = datetime.now() - timedelta(seconds=duration_seconds)
+    
+    # Default sampling rates for each sensor
+    fluorometer_freq = 1.0  # 1 Hz for fluorometer
+    ph_freq = 0.5  # 0.5 Hz for pH sensor (moderate sampling)
+    tsg_freq = 1.0  # 1 Hz for TSG
+    
+    # Calculate number of records for each sensor based on duration and frequency
+    fluorometer_records = max(1, int(duration_seconds * fluorometer_freq))
+    ph_records = max(1, int(duration_seconds * ph_freq))
+    tsg_records = max(1, int(duration_seconds * tsg_freq))
+    
+    # Generate data for each sensor type
+    fluorometer_df = generate_fluorometer_data(
+        n_records=fluorometer_records,
+        base_lat=base_lat,
+        base_lon=base_lon,
+        start_time=start_time,
+        frequency_hz=fluorometer_freq
+    )
+    
+    ph_df = generate_ph_data(
+        n_records=ph_records,
+        start_time=start_time,
+        frequency_hz=ph_freq
+    )
+    
+    tsg_df = generate_tsg_data(
+        n_records=tsg_records,
+        base_lat=base_lat,
+        base_lon=base_lon,
+        start_time=start_time,
+        frequency_hz=tsg_freq
+    )
+    
+    t1 = time.perf_counter()
+    print(f"  Generated {fluorometer_records} fluorometer, {ph_records} pH, {tsg_records} TSG records in {t1-t0:.4f} seconds")
+    
+    return {
+        'fluorometer': fluorometer_df,
+        'ph': ph_df,
+        'tsg': tsg_df
+    }
+
+def write_resampled_outputs(df, basepath, write_csv=False, write_parquet=False, write_sqlite=False):
+    """
+    Write resampled DataFrame to selected outputs.
+    
+    Args:
+        df: Resampled DataFrame with columns: timestamp, lat, lon, rhodamine, ph, temp, salinity, ph_ma
+        basepath: Base path for output files
+        write_csv: Whether to write CSV output
+        write_parquet: Whether to write Parquet output
+        write_sqlite: Whether to write SQLite output
+    """
+    timings = {}
+    
+    if write_csv:
+        csv_file = f"{basepath}_resampled.csv"
+        print(f"Writing resampled data to {csv_file} (CSV)...")
+        t_csv0 = time.perf_counter()
+        file_writers.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
+        t_csv1 = time.perf_counter()
+        timings['csv'] = t_csv1 - t_csv0
+
+    if write_parquet:
+        parquet_file = f"{basepath}_resampled.parquet"
+        print(f"Writing resampled data to {parquet_file} (Parquet)...")
+        t_parquet0 = time.perf_counter()
+        config = get_config()
+        partition_hours = config.get('partition_hours', None)
+        file_writers.to_parquet(df, parquet_file, append=True, partition_hours=partition_hours)
+        t_parquet1 = time.perf_counter()
+        timings['parquet'] = t_parquet1 - t_parquet0
+
+    if write_sqlite:
+        sqlite_file = f"{basepath}_resampled.sqlite"
+        print(f"Writing resampled data to {sqlite_file} (SQLite table: resampled_data)...")
+        t_sqlite0 = time.perf_counter()
+        write_resampled_to_sqlite(df, sqlite_file)
+        t_sqlite1 = time.perf_counter()
+        timings['sqlite'] = t_sqlite1 - t_sqlite0
+
+    if timings:
+        print("Resampled data timing summary:")
+        for k, v in timings.items():
+            print(f"  {k.capitalize()} write: {v:.4f} seconds")
+
+def resample_sensor_data(sqlite_path, resample_interval='2S'):
+    """
+    Load raw sensor data from SQLite and resample it.
+    
+    Args:
+        sqlite_path: Path to SQLite database containing raw sensor tables
+        resample_interval: Resample interval (e.g., '2S' for 2 seconds)
+    
+    Returns:
+        DataFrame: Resampled data with pH moving average
+    """
+    print(f"Loading and resampling data from {sqlite_path} with interval {resample_interval}...")
+    t0 = time.perf_counter()
+    
+    # Load and resample the data
+    df = load_and_resample_sqlite(sqlite_path, resample_interval)
+    
+    t1 = time.perf_counter()
+    print(f"  Resampling completed in {t1-t0:.4f} seconds, {len(df)} records")
+    
+    return df
+
+def resample_raw_sensor_data(sqlite_path, resample_interval='2s'):
+    """
+    Load raw sensor data from SQLite and resample it for our specific schema.
+    
+    Args:
+        sqlite_path: Path to SQLite database containing raw sensor tables
+        resample_interval: Resample interval (e.g., '2s' for 2 seconds)
+    
+    Returns:
+        DataFrame: Resampled data with pH moving average
+    """
+    print(f"Loading and resampling raw sensor data from {sqlite_path} with interval {resample_interval}...")
+    t0 = time.perf_counter()
+    
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        # Read tables with correct column mappings
+        # Fluorometer: timestamp, latitude->lat, longitude->lon, concentration->rhodamine
+        fluoro_query = "SELECT timestamp, latitude as lat, longitude as lon, concentration as rhodamine FROM fluorometer"
+        fluoro = pd.read_sql_query(fluoro_query, conn)
+        
+        # pH: use ph_free as ph value, and get timestamp from pc_timestamp
+        ph_query = "SELECT strftime('%s', pc_timestamp) as timestamp, ph_free as ph FROM ph"
+        ph = pd.read_sql_query(ph_query, conn)
+        
+        # TSG: timestamp, temp, calculate salinity from conductivity (simplified)
+        # For now, we'll use a simplified salinity calculation: salinity ≈ conductivity / 1.7
+        tsg_query = "SELECT timestamp, temp, cond/1.7 as salinity FROM tsg"
+        tsg = pd.read_sql_query(tsg_query, conn)
+        
+    finally:
+        conn.close()
+    
+    # Convert integer timestamps to datetime
+    fluoro['timestamp'] = pd.to_datetime(fluoro['timestamp'], unit='s')
+    ph['timestamp'] = pd.to_datetime(pd.to_numeric(ph['timestamp'], errors='coerce'), unit='s')
+    tsg['timestamp'] = pd.to_datetime(tsg['timestamp'], unit='s')
+    
+    # Set timestamp as index
+    fluoro = fluoro.set_index('timestamp')
+    ph = ph.set_index('timestamp')
+    tsg = tsg.set_index('timestamp')
+
+    # Resample to specified interval
+    fluoro_res = fluoro.resample(resample_interval).nearest()
+    ph_res = ph.resample(resample_interval).nearest()
+    tsg_res = tsg.resample(resample_interval).nearest()
+
+    # Combine all on timestamp
+    df = fluoro_res.join([ph_res, tsg_res], how='outer')
+    df = df.reset_index()
+    
+    # Reorder columns to match expected format
+    cols = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity']
+    df = df[cols]
+    
+    # Add moving average of pH
+    config = get_config()
+    window_seconds = config.get('ph_ma_window', 120)
+    # Calculate frequency based on resample interval
+    interval_seconds = pd.Timedelta(resample_interval).total_seconds()
+    freq_hz = 1.0 / interval_seconds
+    df = add_ph_moving_average(df, window_seconds=window_seconds, freq_hz=freq_hz)
+    
+    t1 = time.perf_counter()
+    print(f"  Resampling completed in {t1-t0:.4f} seconds, {len(df)} records")
+    
+    return df
+
 def main():
     args = parse_args()
     basepath = os.path.join(args.path, args.basename)
     
-    # Determine which outputs to write
-    any_selected = args.csv or args.parquet or args.duckdb or args.sqlite
-    write_csv = args.csv or not any_selected
-    write_parquet = args.parquet or not any_selected
-    write_duckdb = args.duckdb or not any_selected
-    write_sqlite = args.sqlite or not any_selected
+    # Determine which outputs to write for resampled data
+    any_selected = args.csv or args.parquet or args.sqlite
+    write_csv = args.csv
+    write_parquet = args.parquet  
+    write_sqlite = args.sqlite
     
-    # Handle raw sensor data generation
-    if args.raw_sensors:
-        sqlite_file = f"{basepath}.sqlite"
-        print(f"Raw sensor mode: writing to {sqlite_file}")
-        
-        if args.continuous:
-            print("Continuous raw sensor mode enabled. Press Ctrl+C to stop.")
-            interval = args.num / args.freq if args.freq > 0 else args.num
-            try:
-                while True:
-                    print(f"Generating raw sensor batch of {args.num} records...")
-                    sensor_data = generate_raw_sensor_batch(
-                        args.num, args.freq, base_lat=args.lat, base_lon=args.lon
-                    )
-                    write_to_raw_tables(
-                        fluorometer_df=sensor_data['fluorometer'],
-                        ph_df=sensor_data['ph'],
-                        tsg_df=sensor_data['tsg'],
-                        sqlite_path=sqlite_file
-                    )
-                    print(f"Sleeping {interval:.2f} seconds before next batch...")
-                    time.sleep(interval)
-            except KeyboardInterrupt:
-                print("\nStopped continuous raw sensor generation.")
-                sys.exit(0)
-        else:
-            sensor_data = generate_raw_sensor_batch(
-                args.num, args.freq, base_lat=args.lat, base_lon=args.lon
-            )
-            write_to_raw_tables(
-                fluorometer_df=sensor_data['fluorometer'],
-                ph_df=sensor_data['ph'],
-                tsg_df=sensor_data['tsg'],
-                sqlite_path=sqlite_file
-            )
-        return
+    # If no specific output selected, don't write any resampled outputs by default
+    # (raw sensor data will still be written to SQLite)
     
-    # Original resampled data generation
     if args.continuous:
-        print("Continuous mode enabled. Press Ctrl+C to stop.")
-        interval = args.num / args.freq if args.freq > 0 else args.num
+        print(f"Continuous mode enabled. Generating {args.time} seconds of sensor data every {args.time} seconds. Press Ctrl+C to stop.")
         try:
-            # First batch: generate and write immediately
-            print(f"Preparing first batch of {args.num} records...")
-            df = generate_batch(args.num, args.freq)
-            write_outputs(df, basepath, args.table, write_csv, write_parquet, write_duckdb, write_sqlite)
-            next_write_time = time.time() + interval
             while True:
-                print(f"Preparing next batch of {args.num} records...")
-                df = generate_batch(args.num, args.freq)
-                now = time.time()
-                sleep_time = next_write_time - now
-                if sleep_time > 0:
-                    print(f"Sleeping {sleep_time:.2f} seconds before writing batch...")
-                    time.sleep(sleep_time)
-                print(f"Writing batch at {datetime.now().isoformat(timespec='seconds')}...")
-                write_outputs(df, basepath, args.table, write_csv, write_parquet, write_duckdb, write_sqlite)
-                next_write_time += interval
+                print(f"Generating {args.time} seconds of sensor data...")
+                
+                # Generate raw sensor data
+                sensor_data = generate_time_based_sensor_data(
+                    duration_seconds=args.time,
+                    base_lat=args.lat,
+                    base_lon=args.lon
+                )
+                
+                # Write raw sensor data to SQLite
+                raw_sqlite_file = f"{basepath}.sqlite"
+                print(f"Writing raw sensor data to {raw_sqlite_file}...")
+                write_to_raw_tables(
+                    fluorometer_df=sensor_data['fluorometer'],
+                    ph_df=sensor_data['ph'],
+                    tsg_df=sensor_data['tsg'],
+                    sqlite_path=raw_sqlite_file
+                )
+                
+                # Resample the data from SQLite
+                resampled_df = resample_raw_sensor_data(raw_sqlite_file, args.resample_interval)
+                
+                # Write resampled data to selected outputs
+                if any_selected:
+                    write_resampled_outputs(resampled_df, basepath, write_csv, write_parquet, write_sqlite)
+                
+                print(f"Sleeping {args.time} seconds before next batch...")
+                time.sleep(args.time)
+                
         except KeyboardInterrupt:
             print("\nStopped continuous generation.")
             sys.exit(0)
     else:
-        df = generate_batch(args.num, args.freq)
-        write_outputs(df, basepath, args.table, write_csv, write_parquet, write_duckdb, write_sqlite)
+        print(f"Generating {args.time} seconds of sensor data...")
+        
+        # Generate raw sensor data
+        sensor_data = generate_time_based_sensor_data(
+            duration_seconds=args.time,
+            base_lat=args.lat,
+            base_lon=args.lon
+        )
+        
+        # Write raw sensor data to SQLite
+        raw_sqlite_file = f"{basepath}.sqlite"
+        print(f"Writing raw sensor data to {raw_sqlite_file}...")
+        write_to_raw_tables(
+            fluorometer_df=sensor_data['fluorometer'],
+            ph_df=sensor_data['ph'],
+            tsg_df=sensor_data['tsg'],
+            sqlite_path=raw_sqlite_file
+        )
+        
+        # Resample the data from SQLite
+        resampled_df = resample_raw_sensor_data(raw_sqlite_file, args.resample_interval)
+        
+        # Write resampled data to selected outputs
+        if any_selected:
+            write_resampled_outputs(resampled_df, basepath, write_csv, write_parquet, write_sqlite)
+        else:
+            print("No resampled output formats selected. Use --csv, --parquet, or --sqlite to write resampled data.")
+        
+        print("Data generation complete.")
 
 
 if __name__ == "__main__":

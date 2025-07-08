@@ -21,7 +21,7 @@ def read_table(conn, table, columns):
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
     return df
 
-def load_and_resample_sqlite(sqlite_path, resample_interval='2S'):
+def load_and_resample_sqlite(sqlite_path, resample_interval='2s'):
     """
     Read and resample data from fluorometer, ph, and tsg tables in a SQLite database.
     Returns a DataFrame with columns: timestamp, lat, lon, rhodamine, ph, temp, salinity
@@ -77,7 +77,7 @@ def poll_new_records(
     sqlite_path,
     last_timestamp: Optional[pd.Timestamp] = None,
     poll_interval: float = 2.0,
-    resample_interval: str = '2S',
+    resample_interval: str = '2s',
     stop_after: Optional[float] = None
 ):
     """
@@ -86,7 +86,7 @@ def poll_new_records(
         sqlite_path: Path to SQLite database
         last_timestamp: Only return records after this timestamp (if None, returns all)
         poll_interval: Seconds between polls
-        resample_interval: Resample interval (default '2S')
+        resample_interval: Resample interval (default '2s')
         stop_after: Stop polling after this many seconds (None = run forever)
     Yields:
         DataFrame of new processed records (may be empty if no new data)
@@ -160,13 +160,13 @@ def write_resampled_to_sqlite(df, sqlite_path):
     finally:
         conn.close()
 
-def write_resampled_data_to_sqlite(sqlite_path, resample_interval='2S', output_table='resampled_data'):
+def write_resampled_data_to_sqlite(sqlite_path, resample_interval='2s', output_table='resampled_data'):
     """
     Load, resample data, and write directly to the resampled_data table in SQLite.
     
     Args:
         sqlite_path: Path to SQLite database
-        resample_interval: Resample interval (default '2S')
+        resample_interval: Resample interval (default '2s')
         output_table: Name of output table (default 'resampled_data')
     """
     # Load and resample data
@@ -184,7 +184,7 @@ def main():
     parser.add_argument('--path', type=str, default='.', help='Directory to write output files (default: current directory)')
     parser.add_argument('--basename', type=str, default='resampled_data', help='Base name for output files (no extension)')
     parser.add_argument('--table', type=str, default='sensor_data', help='DuckDB table name (default: sensor_data)')
-    parser.add_argument('--resample', type=str, default='2S', help='Resample interval (default: 2S)')
+    parser.add_argument('--resample', type=str, default='2s', help='Resample interval (default: 2s)')
     parser.add_argument('--poll', action='store_true', help='Continuously poll for new records')
     parser.add_argument('--interval', type=float, default=2.0, help='Polling interval in seconds (default: 2.0)')
     parser.add_argument('--stop-after', type=float, default=None, help='Stop polling after this many seconds (default: run forever)')

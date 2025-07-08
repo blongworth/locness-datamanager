@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "locness-datamanager"
 version = "0.1.0"
@@ -65,3 +69,6 @@ exclude_lines = [
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["locness_datamanager"]
