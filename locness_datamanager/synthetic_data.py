@@ -10,7 +10,164 @@ from locness_datamanager import file_writers
 from locness_datamanager.resample import add_ph_moving_average
 import sqlite3
 
-# TODO: add synthetic raw data to ph, tsg, and fluorometer tables
+# Functions for generating synthetic data for fluorometer, ph, and tsg tables
+
+def generate_fluorometer_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, frequency_hz=1.0):
+    """
+    Generate synthetic fluorometer data matching the fluorometer table schema.
+    Args:
+        n_records: Number of records to generate
+        base_lat: Base latitude
+        base_lon: Base longitude
+        start_time: Optional datetime to start timestamps
+        frequency_hz: Sampling frequency in Hz
+    Returns:
+        pandas.DataFrame with columns: timestamp, latitude, longitude, gain, voltage, concentration
+    """
+    if start_time is None:
+        current_time = datetime.now()
+    else:
+        current_time = start_time
+    delta_seconds = 1.0 / frequency_hz if frequency_hz > 0 else 1.0
+    
+    data = []
+    lat = base_lat
+    lon = base_lon
+    
+    for i in range(n_records):
+        # Small random movement to simulate realistic GPS drift
+        if i > 0:
+            lat += np.random.uniform(-0.0005, 0.0005)
+            lon += np.random.uniform(-0.0005, 0.0005)
+        
+        # Generate realistic fluorometer readings
+        base_concentration = 1.5 + 0.8 * np.sin(i * 0.01) + np.random.normal(0, 0.3)
+        concentration = max(0, base_concentration)  # Concentration can't be negative
+        
+        # Voltage typically correlates with concentration
+        voltage = 0.5 + concentration * 0.3 + np.random.normal(0, 0.05)
+        voltage = max(0, min(5.0, voltage))  # Voltage between 0-5V
+        
+        # Gain settings are typically discrete values
+        gain = np.random.choice([1, 10, 100])
+        
+        record = {
+            "timestamp": int((current_time + timedelta(seconds=i * delta_seconds)).timestamp()),
+            "latitude": lat,
+            "longitude": lon,
+            "gain": gain,
+            "voltage": voltage,
+            "concentration": concentration,
+        }
+        data.append(record)
+    
+    return pd.DataFrame(data)
+
+def generate_ph_data(n_records=1, start_time=None, frequency_hz=0.1):
+    """
+    Generate synthetic pH sensor data matching the ph table schema.
+    Args:
+        n_records: Number of records to generate
+        start_time: Optional datetime to start timestamps
+        frequency_hz: Sampling frequency in Hz (pH sensors typically sample slowly)
+    Returns:
+        pandas.DataFrame with pH sensor data columns
+    """
+    if start_time is None:
+        current_time = datetime.now()
+    else:
+        current_time = start_time
+    delta_seconds = 1.0 / frequency_hz if frequency_hz > 0 else 10.0
+    
+    data = []
+    
+    for i in range(n_records):
+        timestamp = current_time + timedelta(seconds=i * delta_seconds)
+        ph_timestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        pc_timestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')
+        
+        # Generate realistic pH sensor readings
+        base_ph = 8.1 + 0.2 * np.sin(i * 0.05) + np.random.normal(0, 0.05)
+        
+        record = {
+            "pc_timestamp": pc_timestamp,
+            "samp_num": i + 1,
+            "ph_timestamp": ph_timestamp,
+            "v_bat": 12.0 + np.random.normal(0, 0.5),  # Battery voltage ~12V
+            "v_bias_pos": 2.5 + np.random.normal(0, 0.1),  # Positive bias voltage
+            "v_bias_neg": -2.5 + np.random.normal(0, 0.1),  # Negative bias voltage
+            "t_board": 20.0 + np.random.normal(0, 2.0),  # Board temperature
+            "h_board": 50.0 + np.random.normal(0, 10.0),  # Board humidity
+            "vrse": 0.5 + np.random.normal(0, 0.05),  # Reference electrode voltage
+            "vrse_std": np.random.uniform(0.001, 0.01),  # Standard deviation
+            "cevk": 0.8 + np.random.normal(0, 0.1),  # Counter electrode voltage vs K+
+            "cevk_std": np.random.uniform(0.001, 0.02),  # Standard deviation
+            "ce_ik": np.random.normal(0, 0.01),  # Counter electrode current
+            "i_sub": np.random.normal(0, 0.001),  # Substrate current
+            "cal_temp": 20.0 + np.random.normal(0, 1.0),  # Calibration temperature
+            "cal_sal": 35.0 + np.random.normal(0, 1.0),  # Calibration salinity
+            "k0": -0.5 + np.random.normal(0, 0.1),  # Calibration coefficient K0
+            "k2": 0.05 + np.random.normal(0, 0.01),  # Calibration coefficient K2
+            "ph_free": base_ph + np.random.normal(0, 0.02),  # Free pH scale
+            "ph_total": base_ph + 0.1 + np.random.normal(0, 0.02),  # Total pH scale
+        }
+        data.append(record)
+    
+    return pd.DataFrame(data)
+
+def generate_tsg_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, frequency_hz=1.0):
+    """
+    Generate synthetic TSG (Temperature, Salinity, GPS) data matching the tsg table schema.
+    Args:
+        n_records: Number of records to generate
+        base_lat: Base latitude
+        base_lon: Base longitude
+        start_time: Optional datetime to start timestamps
+        frequency_hz: Sampling frequency in Hz
+    Returns:
+        pandas.DataFrame with TSG data columns
+    """
+    if start_time is None:
+        current_time = datetime.now()
+    else:
+        current_time = start_time
+    delta_seconds = 1.0 / frequency_hz if frequency_hz > 0 else 1.0
+    
+    data = []
+    lat = base_lat
+    lon = base_lon
+    
+    for i in range(n_records):
+        timestamp_dt = current_time + timedelta(seconds=i * delta_seconds)
+        
+        # Small random movement to simulate realistic GPS drift
+        if i > 0:
+            lat += np.random.uniform(-0.0005, 0.0005)
+            lon += np.random.uniform(-0.0005, 0.0005)
+        
+        # Generate realistic oceanographic measurements
+        temp = 15.0 + 5.0 * np.sin(i * 0.02) + np.random.normal(0, 0.5)
+        hull_temp = temp + np.random.normal(2.0, 0.3)  # Hull temp usually higher
+        
+        # Conductivity relates to salinity and temperature
+        salinity = 35.0 + 2.0 * np.sin(i * 0.015) + np.random.normal(0, 0.2)
+        # Rough conversion: conductivity ≈ salinity * 1.7 (simplified)
+        cond = salinity * 1.7 + temp * 0.02 + np.random.normal(0, 0.1)
+        
+        record = {
+            "timestamp": int(timestamp_dt.timestamp()),
+            "scan_no": i + 1,
+            "cond": max(0, cond),  # Conductivity (S/m)
+            "temp": temp,  # Temperature (°C)
+            "hull_temp": hull_temp,  # Hull temperature (°C)
+            "time_elapsed": i * delta_seconds,  # Elapsed time in seconds
+            "nmea_time": int(timestamp_dt.timestamp()),  # NMEA timestamp
+            "latitude": lat,
+            "longitude": lon,
+        }
+        data.append(record)
+    
+    return pd.DataFrame(data)
 
 def generate(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, frequency_hz=1.0):
     """
@@ -64,6 +221,9 @@ def parse_args():
     parser.add_argument('--parquet', action='store_true', help='Write Parquet output')
     parser.add_argument('--duckdb', action='store_true', help='Write DuckDB output')
     parser.add_argument('--sqlite', action='store_true', help='Write SQLite output')
+    parser.add_argument('--raw-sensors', action='store_true', help='Generate and write raw sensor data to fluorometer, ph, and tsg tables')
+    parser.add_argument('--lat', type=float, default=42.5, help='Base latitude for GPS coordinates (default: 42.5)')
+    parser.add_argument('--lon', type=float, default=-69.5, help='Base longitude for GPS coordinates (default: -69.5)')
     return parser.parse_args()
 
 
@@ -167,15 +327,142 @@ def write_to_resampled_data_table(df, sqlite_path):
     finally:
         conn.close()
 
+def write_to_raw_tables(fluorometer_df=None, ph_df=None, tsg_df=None, sqlite_path="sensors.sqlite"):
+    """
+    Write synthetic data to the raw fluorometer, ph, and tsg tables in SQLite.
+    
+    Args:
+        fluorometer_df: DataFrame with fluorometer data (optional)
+        ph_df: DataFrame with pH data (optional)
+        tsg_df: DataFrame with TSG data (optional)
+        sqlite_path: Path to SQLite database
+    """
+    conn = sqlite3.connect(sqlite_path)
+    
+    try:
+        if fluorometer_df is not None and not fluorometer_df.empty:
+            fluorometer_df.to_sql('fluorometer', conn, if_exists='append', index=False)
+            print(f"Successfully wrote {len(fluorometer_df)} records to fluorometer table")
+        
+        if ph_df is not None and not ph_df.empty:
+            ph_df.to_sql('ph', conn, if_exists='append', index=False)
+            print(f"Successfully wrote {len(ph_df)} records to ph table")
+        
+        if tsg_df is not None and not tsg_df.empty:
+            tsg_df.to_sql('tsg', conn, if_exists='append', index=False)
+            print(f"Successfully wrote {len(tsg_df)} records to tsg table")
+            
+    except Exception as e:
+        print(f"Error writing to raw tables: {e}")
+    finally:
+        conn.close()
+
+def generate_raw_sensor_batch(num, freq, start_time=None, base_lat=42.5, base_lon=-69.5):
+    """
+    Generate a batch of synthetic raw sensor data for all three sensor types.
+    
+    Args:
+        num: Number of records to generate per sensor
+        freq: Sampling frequency in Hz
+        start_time: Optional start time (defaults to now - duration)
+        base_lat: Base latitude
+        base_lon: Base longitude
+    
+    Returns:
+        dict: Dictionary containing DataFrames for each sensor type
+    """
+    print(f"Generating {num} raw sensor samples at {freq} Hz...")
+    t0 = time.perf_counter()
+    
+    # Set start_time so last sample is now
+    if start_time is None:
+        delta_seconds = 1.0 / freq if freq > 0 else 1.0
+        start_time = datetime.now() - timedelta(seconds=(num - 1) * delta_seconds)
+    
+    # Generate data for each sensor type with appropriate frequencies
+    fluorometer_df = generate_fluorometer_data(
+        n_records=num, 
+        base_lat=base_lat, 
+        base_lon=base_lon, 
+        start_time=start_time, 
+        frequency_hz=freq
+    )
+    
+    # pH sensors typically sample much slower
+    ph_freq = min(freq, 0.1)  # Max 0.1 Hz for pH sensor
+    ph_records = max(1, int(num * ph_freq / freq))
+    ph_df = generate_ph_data(
+        n_records=ph_records, 
+        start_time=start_time, 
+        frequency_hz=ph_freq
+    )
+    
+    tsg_df = generate_tsg_data(
+        n_records=num, 
+        base_lat=base_lat, 
+        base_lon=base_lon, 
+        start_time=start_time, 
+        frequency_hz=freq
+    )
+    
+    t1 = time.perf_counter()
+    print(f"  Raw sensor data generation: {t1-t0:.4f} seconds")
+    
+    return {
+        'fluorometer': fluorometer_df,
+        'ph': ph_df,
+        'tsg': tsg_df
+    }
+
 def main():
     args = parse_args()
     basepath = os.path.join(args.path, args.basename)
+    
     # Determine which outputs to write
     any_selected = args.csv or args.parquet or args.duckdb or args.sqlite
     write_csv = args.csv or not any_selected
     write_parquet = args.parquet or not any_selected
     write_duckdb = args.duckdb or not any_selected
     write_sqlite = args.sqlite or not any_selected
+    
+    # Handle raw sensor data generation
+    if args.raw_sensors:
+        sqlite_file = f"{basepath}.sqlite"
+        print(f"Raw sensor mode: writing to {sqlite_file}")
+        
+        if args.continuous:
+            print("Continuous raw sensor mode enabled. Press Ctrl+C to stop.")
+            interval = args.num / args.freq if args.freq > 0 else args.num
+            try:
+                while True:
+                    print(f"Generating raw sensor batch of {args.num} records...")
+                    sensor_data = generate_raw_sensor_batch(
+                        args.num, args.freq, base_lat=args.lat, base_lon=args.lon
+                    )
+                    write_to_raw_tables(
+                        fluorometer_df=sensor_data['fluorometer'],
+                        ph_df=sensor_data['ph'],
+                        tsg_df=sensor_data['tsg'],
+                        sqlite_path=sqlite_file
+                    )
+                    print(f"Sleeping {interval:.2f} seconds before next batch...")
+                    time.sleep(interval)
+            except KeyboardInterrupt:
+                print("\nStopped continuous raw sensor generation.")
+                sys.exit(0)
+        else:
+            sensor_data = generate_raw_sensor_batch(
+                args.num, args.freq, base_lat=args.lat, base_lon=args.lon
+            )
+            write_to_raw_tables(
+                fluorometer_df=sensor_data['fluorometer'],
+                ph_df=sensor_data['ph'],
+                tsg_df=sensor_data['tsg'],
+                sqlite_path=sqlite_file
+            )
+        return
+    
+    # Original resampled data generation
     if args.continuous:
         print("Continuous mode enabled. Press Ctrl+C to stop.")
         interval = args.num / args.freq if args.freq > 0 else args.num
@@ -206,3 +493,33 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Example usage of the new sensor-specific functions:
+"""
+# Generate fluorometer data
+fluoro_df = generate_fluorometer_data(n_records=100, frequency_hz=1.0)
+print("Fluorometer data shape:", fluoro_df.shape)
+print("Fluorometer columns:", list(fluoro_df.columns))
+
+# Generate pH data (slower sampling rate)
+ph_df = generate_ph_data(n_records=10, frequency_hz=0.1)
+print("pH data shape:", ph_df.shape)
+print("pH columns:", list(ph_df.columns))
+
+# Generate TSG data
+tsg_df = generate_tsg_data(n_records=100, frequency_hz=1.0)
+print("TSG data shape:", tsg_df.shape)
+print("TSG columns:", list(tsg_df.columns))
+
+# Generate all sensor types as a batch
+sensor_batch = generate_raw_sensor_batch(num=50, freq=1.0)
+print("Batch keys:", list(sensor_batch.keys()))
+
+# Write to SQLite database (uncomment to use)
+# write_to_raw_tables(
+#     fluorometer_df=sensor_batch['fluorometer'],
+#     ph_df=sensor_batch['ph'],
+#     tsg_df=sensor_batch['tsg'],
+#     sqlite_path="test_sensors.sqlite"
+# )
+"""
