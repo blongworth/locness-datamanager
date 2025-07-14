@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import tempfile
 from pathlib import Path
+import sqlite3
 
 from locness_datamanager.synthetic_data import (
     generate_fluorometer_data,
@@ -12,7 +13,10 @@ from locness_datamanager.synthetic_data import (
     generate,
     generate_raw_sensor_batch,
     write_to_raw_tables,
+    resample_raw_sensor_data,
 )
+from locness_datamanager.resample import load_and_resample_sqlite, write_resampled_to_sqlite
+from locness_datamanager import file_writers
 
 
 class TestSyntheticDataGeneration:
@@ -161,6 +165,285 @@ class TestDataWriting:
         conn.close()
 
 
+class TestFieldMapping:
+    """Test that all expected fields are present in raw data, resampled data, and CSV outputs."""
+
+    def test_raw_fluorometer_fields_complete(self):
+        """Test that fluorometer raw data has all expected fields."""
+        df = generate_fluorometer_data(n_records=5)
+        
+        expected_fields = ["timestamp", "latitude", "longitude", "gain", "voltage", "concentration"]
+        assert list(df.columns) == expected_fields
+        
+        # Verify no null values in critical fields
+        assert not df["timestamp"].isnull().any()
+        assert not df["latitude"].isnull().any()
+        assert not df["longitude"].isnull().any()
+        assert not df["concentration"].isnull().any()
+
+    def test_raw_ph_fields_complete(self):
+        """Test that pH raw data has all expected fields."""
+        df = generate_ph_data(n_records=3)
+        
+        expected_fields = [
+            "pc_timestamp", "samp_num", "ph_timestamp", "v_bat", "v_bias_pos",
+            "v_bias_neg", "t_board", "h_board", "vrse", "vrse_std", "cevk",
+            "cevk_std", "ce_ik", "i_sub", "cal_temp", "cal_sal", "k0", "k2",
+            "ph_free", "ph_total"
+        ]
+        assert list(df.columns) == expected_fields
+        
+        # Verify no null values in critical fields
+        assert not df["pc_timestamp"].isnull().any()
+        assert not df["ph_free"].isnull().any()
+        assert not df["ph_total"].isnull().any()
+
+    def test_raw_tsg_fields_complete(self):
+        """Test that TSG raw data has all expected fields."""
+        df = generate_tsg_data(n_records=5)
+        
+        expected_fields = [
+            "timestamp", "scan_no", "cond", "temp", "hull_temp",
+            "time_elapsed", "nmea_time", "latitude", "longitude"
+        ]
+        assert list(df.columns) == expected_fields
+        
+        # Verify no null values in critical fields
+        assert not df["timestamp"].isnull().any()
+        assert not df["temp"].isnull().any()
+        assert not df["cond"].isnull().any()
+        assert not df["latitude"].isnull().any()
+        assert not df["longitude"].isnull().any()
+
+    def test_resampled_data_field_mapping(self, sample_sqlite_db):
+        """Test that resampled data has all expected fields with correct mapping."""
+        # Generate and write raw data
+        fluorometer_df = generate_fluorometer_data(n_records=10)
+        ph_df = generate_ph_data(n_records=5)
+        tsg_df = generate_tsg_data(n_records=10)
+        
+        write_to_raw_tables(
+            fluorometer_df=fluorometer_df,
+            ph_df=ph_df,
+            tsg_df=tsg_df,
+            sqlite_path=str(sample_sqlite_db)
+        )
+        
+        # Test the correct resampling function with field mapping
+        df = resample_raw_sensor_data(str(sample_sqlite_db), resample_interval='2s')
+        
+        expected_columns = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity', 'ph_ma']
+        assert list(df.columns) == expected_columns
+        
+        # Verify field mappings are correct
+        assert not df["lat"].isnull().all()  # Should have latitude data mapped to lat
+        assert not df["lon"].isnull().all()  # Should have longitude data mapped to lon
+        assert not df["rhodamine"].isnull().all()  # Should have concentration mapped to rhodamine
+        assert not df["ph"].isnull().all()  # Should have ph_free mapped to ph
+        assert not df["temp"].isnull().all()  # Should have temp data
+        assert not df["salinity"].isnull().all()  # Should have calculated salinity from conductivity
+        assert not df["ph_ma"].isnull().all()  # Should have pH moving average
+
+    def test_broken_resampling_function_detection(self, sample_sqlite_db):
+        """Test detection of the broken resampling function that expects wrong column names."""
+        # Generate and write raw data
+        fluorometer_df = generate_fluorometer_data(n_records=5)
+        ph_df = generate_ph_data(n_records=3)
+        tsg_df = generate_tsg_data(n_records=5)
+        
+        write_to_raw_tables(
+            fluorometer_df=fluorometer_df,
+            ph_df=ph_df,
+            tsg_df=tsg_df,
+            sqlite_path=str(sample_sqlite_db)
+        )
+        
+        # The broken function should fail due to column name mismatches
+        with pytest.raises(Exception):  # Should fail due to missing columns
+            load_and_resample_sqlite(str(sample_sqlite_db))
+
+    def test_resampled_csv_output_fields(self, sample_sqlite_db, tmp_path):
+        """Test that CSV output from resampled data has all expected fields."""
+        # Generate and write raw data
+        fluorometer_df = generate_fluorometer_data(n_records=10)
+        ph_df = generate_ph_data(n_records=5)
+        tsg_df = generate_tsg_data(n_records=10)
+        
+        write_to_raw_tables(
+            fluorometer_df=fluorometer_df,
+            ph_df=ph_df,
+            tsg_df=tsg_df,
+            sqlite_path=str(sample_sqlite_db)
+        )
+        
+        # Get resampled data
+        df = resample_raw_sensor_data(str(sample_sqlite_db), resample_interval='2s')
+        
+        # Write to CSV
+        csv_path = tmp_path / "test_resampled.csv"
+        file_writers.to_csv(df, str(csv_path))
+        
+        # Read back and verify fields
+        df_read = pd.read_csv(csv_path)
+        expected_columns = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity', 'ph_ma']
+        assert list(df_read.columns) == expected_columns
+        
+        # Verify data integrity
+        assert len(df_read) == len(df)
+        assert not df_read["lat"].isnull().all()
+        assert not df_read["lon"].isnull().all()
+        assert not df_read["rhodamine"].isnull().all()
+
+    def test_resampled_sqlite_table_fields(self, sample_sqlite_db):
+        """Test that resampled data written back to SQLite has all expected fields."""
+        # Generate and write raw data
+        fluorometer_df = generate_fluorometer_data(n_records=10)
+        ph_df = generate_ph_data(n_records=5)
+        tsg_df = generate_tsg_data(n_records=10)
+        
+        write_to_raw_tables(
+            fluorometer_df=fluorometer_df,
+            ph_df=ph_df,
+            tsg_df=tsg_df,
+            sqlite_path=str(sample_sqlite_db)
+        )
+        
+        # Get resampled data and write back to SQLite
+        df = resample_raw_sensor_data(str(sample_sqlite_db), resample_interval='2s')
+        write_resampled_to_sqlite(df, str(sample_sqlite_db))
+        
+        # Read from resampled_data table and verify fields
+        conn = sqlite3.connect(sample_sqlite_db)
+        df_from_sqlite = pd.read_sql_query("SELECT * FROM resampled_data", conn)
+        conn.close()
+        
+        expected_columns = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity', 'ph_ma']
+        assert list(df_from_sqlite.columns) == expected_columns
+        
+        # Verify data was written
+        assert len(df_from_sqlite) > 0
+        assert not df_from_sqlite["lat"].isnull().all()
+        assert not df_from_sqlite["lon"].isnull().all()
+
+
+class TestDataIntegrity:
+    """Test data integrity across the pipeline."""
+
+    def test_end_to_end_field_preservation(self, sample_sqlite_db, tmp_path):
+        """Test that all fields are preserved through the complete pipeline."""
+        # Generate raw data
+        fluorometer_df = generate_fluorometer_data(n_records=20, frequency_hz=1.0)
+        ph_df = generate_ph_data(n_records=10, frequency_hz=0.5)
+        tsg_df = generate_tsg_data(n_records=20, frequency_hz=1.0)
+        
+        # Write to raw tables
+        write_to_raw_tables(
+            fluorometer_df=fluorometer_df,
+            ph_df=ph_df,
+            tsg_df=tsg_df,
+            sqlite_path=str(sample_sqlite_db)
+        )
+        
+        # Check raw data in database
+        conn = sqlite3.connect(sample_sqlite_db)
+        
+        # Verify fluorometer table
+        fluoro_from_db = pd.read_sql_query("SELECT * FROM fluorometer", conn)
+        assert len(fluoro_from_db) == 20
+        assert "latitude" in fluoro_from_db.columns
+        assert "longitude" in fluoro_from_db.columns
+        assert "concentration" in fluoro_from_db.columns
+        
+        # Verify pH table
+        ph_from_db = pd.read_sql_query("SELECT * FROM ph", conn)
+        assert len(ph_from_db) == 10
+        assert "ph_free" in ph_from_db.columns
+        assert "ph_total" in ph_from_db.columns
+        
+        # Verify TSG table
+        tsg_from_db = pd.read_sql_query("SELECT * FROM tsg", conn)
+        assert len(tsg_from_db) == 20
+        assert "cond" in tsg_from_db.columns
+        assert "temp" in tsg_from_db.columns
+        assert "latitude" in tsg_from_db.columns
+        assert "longitude" in tsg_from_db.columns
+        
+        conn.close()
+        
+        # Resample data
+        resampled_df = resample_raw_sensor_data(str(sample_sqlite_db), resample_interval='2s')
+        
+        # Verify resampled data has correct mapped fields
+        expected_resampled_columns = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity', 'ph_ma']
+        assert list(resampled_df.columns) == expected_resampled_columns
+        
+        # Write to CSV and verify
+        csv_path = tmp_path / "end_to_end_test.csv"
+        file_writers.to_csv(resampled_df, str(csv_path))
+        
+        csv_df = pd.read_csv(csv_path)
+        assert list(csv_df.columns) == expected_resampled_columns
+        assert len(csv_df) > 0
+        
+        # Verify value ranges are realistic (filter out NaN values)
+        valid_lat = csv_df["lat"].dropna()
+        valid_lon = csv_df["lon"].dropna()
+        valid_rhodamine = csv_df["rhodamine"].dropna()
+        valid_ph = csv_df["ph"].dropna()
+        valid_temp = csv_df["temp"].dropna()
+        valid_salinity = csv_df["salinity"].dropna()
+        
+        assert valid_lat.between(42.4, 42.6).all()  # Around base latitude
+        assert valid_lon.between(-69.6, -69.4).all()  # Around base longitude
+        assert valid_rhodamine.ge(0).all()  # Non-negative concentrations
+        assert valid_ph.between(7.0, 9.0).all()  # Realistic pH range
+        assert valid_temp.gt(0).all()  # Positive temperatures
+        assert valid_salinity.gt(0).all()  # Positive salinity
+
+    def test_field_consistency_across_formats(self, sample_sqlite_db, tmp_path):
+        """Test that field names and values are consistent across different output formats."""
+        # Generate and process data
+        fluorometer_df = generate_fluorometer_data(n_records=10)
+        ph_df = generate_ph_data(n_records=5)
+        tsg_df = generate_tsg_data(n_records=10)
+        
+        write_to_raw_tables(
+            fluorometer_df=fluorometer_df,
+            ph_df=ph_df,
+            tsg_df=tsg_df,
+            sqlite_path=str(sample_sqlite_db)
+        )
+        
+        resampled_df = resample_raw_sensor_data(str(sample_sqlite_db), resample_interval='2s')
+        
+        # Write to different formats
+        csv_path = tmp_path / "consistency_test.csv"
+        parquet_path = tmp_path / "consistency_test.parquet"
+        
+        file_writers.to_csv(resampled_df, str(csv_path))
+        file_writers.to_parquet(resampled_df, str(parquet_path))
+        
+        # Write back to SQLite
+        write_resampled_to_sqlite(resampled_df, str(sample_sqlite_db))
+        
+        # Read from all formats and compare
+        csv_df = pd.read_csv(csv_path)
+        parquet_df = pd.read_parquet(parquet_path)
+        
+        conn = sqlite3.connect(sample_sqlite_db)
+        sqlite_df = pd.read_sql_query("SELECT * FROM resampled_data", conn)
+        conn.close()
+        
+        # All should have same columns
+        expected_columns = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity', 'ph_ma']
+        assert list(csv_df.columns) == expected_columns
+        assert list(parquet_df.columns) == expected_columns
+        assert list(sqlite_df.columns) == expected_columns
+        
+        # All should have same number of records
+        assert len(csv_df) == len(parquet_df) == len(sqlite_df)
+
+
 class TestDataValidation:
     """Test data validation and edge cases."""
 
@@ -208,5 +491,68 @@ class TestDataValidation:
                   for actual, expected in zip(df["time_elapsed"], expected_elapsed))
 
 
+class TestMissingFieldsDemo:
+    """Demonstrate the missing fields issue and verify it's fixed."""
+
+    def test_demonstrate_missing_fields_issue(self, sample_sqlite_db, tmp_path):
+        """Demonstrate that the broken resampling function has missing fields."""
+        # Generate and write raw data with correct schema
+        fluorometer_df = generate_fluorometer_data(n_records=5)
+        ph_df = generate_ph_data(n_records=3)
+        tsg_df = generate_tsg_data(n_records=5)
+        
+        write_to_raw_tables(
+            fluorometer_df=fluorometer_df,
+            ph_df=ph_df,
+            tsg_df=tsg_df,
+            sqlite_path=str(sample_sqlite_db)
+        )
+        
+        # Show that raw data has correct field names
+        conn = sqlite3.connect(sample_sqlite_db)
+        
+        # Fluorometer has: timestamp, latitude, longitude, gain, voltage, concentration
+        # BUT broken resample expects: timestamp, lat, lon, rhodamine
+        fluoro_cols = pd.read_sql_query("PRAGMA table_info(fluorometer)", conn)['name'].tolist()
+        expected_fluoro = ['timestamp', 'latitude', 'longitude', 'gain', 'voltage', 'concentration']
+        assert fluoro_cols == expected_fluoro
+        
+        # pH has many fields including ph_free, ph_total
+        # BUT broken resample expects just: timestamp, ph
+        ph_cols = pd.read_sql_query("PRAGMA table_info(ph)", conn)['name'].tolist()
+        assert 'ph_free' in ph_cols
+        assert 'ph_total' in ph_cols
+        assert 'ph' not in ph_cols  # This field doesn't exist in raw data!
+        
+        # TSG has: timestamp, scan_no, cond, temp, hull_temp, time_elapsed, nmea_time, latitude, longitude
+        # BUT broken resample expects: timestamp, temp, salinity (salinity doesn't exist!)
+        tsg_cols = pd.read_sql_query("PRAGMA table_info(tsg)", conn)['name'].tolist()
+        expected_tsg = ['timestamp', 'scan_no', 'cond', 'temp', 'hull_temp', 'time_elapsed', 'nmea_time', 'latitude', 'longitude']
+        assert tsg_cols == expected_tsg
+        assert 'salinity' not in tsg_cols  # This field doesn't exist in raw data!
+        
+        conn.close()
+        
+        # The working resample function handles the field mapping correctly
+        df = resample_raw_sensor_data(str(sample_sqlite_db), resample_interval='2s')
+        expected_output_columns = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity', 'ph_ma']
+        assert list(df.columns) == expected_output_columns
+        
+        # CSV output has all expected fields
+        csv_path = tmp_path / "fixed_output.csv"
+        file_writers.to_csv(df, str(csv_path))
+        csv_df = pd.read_csv(csv_path)
+        assert list(csv_df.columns) == expected_output_columns
+        
+        # Verify that mapped fields contain actual data (not all NaN)
+        assert not df["lat"].isnull().all()  # latitude -> lat mapping worked
+        assert not df["lon"].isnull().all()  # longitude -> lon mapping worked  
+        assert not df["rhodamine"].isnull().all()  # concentration -> rhodamine mapping worked
+        assert not df["ph"].isnull().all()  # ph_free -> ph mapping worked
+        assert not df["salinity"].isnull().all()  # cond -> salinity calculation worked
+        assert not df["ph_ma"].isnull().all()  # pH moving average was calculated
+
+
+# ...existing code...
 if __name__ == "__main__":
     pytest.main([__file__])
