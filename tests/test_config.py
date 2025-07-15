@@ -29,6 +29,6 @@ class TestConfig:
         assert isinstance(config.get('num', 0), int)
         assert isinstance(config.get('freq', 0.0), (int, float))
         assert isinstance(config.get('continuous', False), bool)
-        assert isinstance(config.get('path', ''), str)
+        assert isinstance(config.get('cloud_path', ''), str)
         assert isinstance(config.get('basename', ''), str)
         assert isinstance(config.get('table', ''), str)

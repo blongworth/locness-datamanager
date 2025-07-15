@@ -137,13 +137,14 @@ def write_outputs(df, basepath, table_name):
     for k, v in timings.items():
         print(f"  {k.capitalize()} write: {v:.4f} seconds")
 
-def write_resampled_to_sqlite(df, sqlite_path):
+def write_resampled_to_sqlite(df, sqlite_path, output_table):
     """
     Write resampled DataFrame to the resampled_data table in SQLite with integer timestamps.
     
     Args:
         df: DataFrame with columns: timestamp, lat, lon, rhodamine, ph, temp, salinity, ph_ma
         sqlite_path: Path to SQLite database
+        output_table: Name of the output table in SQLite
     """
     # Convert datetime timestamps to Unix timestamps (integers)
     df_copy = df.copy()
@@ -152,11 +153,11 @@ def write_resampled_to_sqlite(df, sqlite_path):
     
     conn = sqlite3.connect(sqlite_path)
     try:
-        # Insert data into resampled_data table
-        df_copy.to_sql('resampled_data', conn, if_exists='append', index=False)
-        print(f"Successfully wrote {len(df_copy)} resampled records to resampled_data table")
+        # Insert data into output_table
+        df_copy.to_sql(output_table, conn, if_exists='append', index=False)
+        print(f"Successfully wrote {len(df_copy)} resampled records to {output_table} table")
     except Exception as e:
-        print(f"Error writing to resampled_data table: {e}")
+        print(f"Error writing to {output_table} table: {e}")
     finally:
         conn.close()
 
@@ -173,23 +174,28 @@ def write_resampled_data_to_sqlite(sqlite_path, resample_interval='2s', output_t
     df = load_and_resample_sqlite(sqlite_path, resample_interval)
     
     # Write to the resampled_data table
-    write_resampled_to_sqlite(df, sqlite_path)
+    write_resampled_to_sqlite(df, sqlite_path, output_table)
     
     return df
 
 def main():
     import argparse
+    config = get_config()
     parser = argparse.ArgumentParser(description="Resample and combine SQLite sensor tables, write to CSV, Parquet, and DuckDB.")
-    parser.add_argument('sqlite_path', type=str, help='Path to SQLite database')
-    parser.add_argument('--path', type=str, default='.', help='Directory to write output files (default: current directory)')
-    parser.add_argument('--basename', type=str, default='resampled_data', help='Base name for output files (no extension)')
-    parser.add_argument('--table', type=str, default='sensor_data', help='DuckDB table name (default: sensor_data)')
+    parser.add_argument('--sqlite-path', type=str, default=config.get('db_path'), help='Path to SQLite database (default from config)')
+    parser.add_argument('--path', type=str, default=config.get('cloud_path', '.'), help='Directory to write output files (default from config)')
+    parser.add_argument('--basename', type=str, default=config.get('basename', 'resampled_data'), help='Base name for output files (no extension)')
+    parser.add_argument('--table', type=str, default=config.get('summary_table', 'sensor_data'), help='DuckDB table name (default from config)')
     parser.add_argument('--resample', type=str, default='2s', help='Resample interval (default: 2s)')
     parser.add_argument('--poll', action='store_true', help='Continuously poll for new records')
     parser.add_argument('--interval', type=float, default=2.0, help='Polling interval in seconds (default: 2.0)')
     parser.add_argument('--stop-after', type=float, default=None, help='Stop polling after this many seconds (default: run forever)')
     parser.add_argument('--write-to-sqlite', action='store_true', help='Write resampled data back to SQLite database')
     args = parser.parse_args()
+
+    if not args.sqlite_path:
+        print("Error: SQLite database path not specified in config or command line")
+        return
 
     basepath = os.path.join(args.path, args.basename)
 

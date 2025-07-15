@@ -211,7 +211,7 @@ def parse_args():
     """Parse command-line arguments."""
     config = get_config()
     parser = argparse.ArgumentParser(description="Generate synthetic oceanographic data and write to CSV, Parquet, DuckDB, and SQLite.")
-    parser.add_argument('--path', type=str, default=config['path'], help='Directory to write output files (default: current directory)')
+    parser.add_argument('--path', type=str, default=config['cloud_path'], help='Directory to write output files (default: current directory)')
     parser.add_argument('--basename', type=str, default=config['basename'], help='Base name for output files (no extension)')
     parser.add_argument('--time', type=float, default=60.0, help='Duration of data to generate in seconds (default: 60)')
     parser.add_argument('--table', type=str, default=config['table'], help='DuckDB/SQLite table name (default: sensor_data)')

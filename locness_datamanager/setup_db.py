@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import sys
 import sqlite3
+import os
+from config import get_config
 
 CREATE_TABLES = """
 CREATE TABLE IF NOT EXISTS rhodamine (
@@ -76,6 +78,11 @@ CREATE INDEX IF NOT EXISTS idx_resampled_data_datetime_utc ON resampled_data(dat
 """
     
 def setup_sqlite_db(db_path):
+    # Create directory if it doesn't exist
+    db_dir = os.path.dirname(db_path)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+    
     conn = sqlite3.connect(db_path)
     # Enable WAL mode for concurrency
     conn.executescript(CREATE_TABLES)
@@ -84,8 +91,13 @@ def setup_sqlite_db(db_path):
     conn.close()
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: setup_sqlite_db.py <db_path>")
-        sys.exit(1)
-    db_path = sys.argv[1]
+    # Use command line argument if provided, otherwise use config
+    if len(sys.argv) >= 2:
+        db_path = sys.argv[1]
+    else:
+        config = get_config()
+        db_path = config.get('db_path')
+        if not db_path:
+            print("Error: db_path not found in config")
+            sys.exit(1)
     setup_sqlite_db(db_path)

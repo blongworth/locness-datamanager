@@ -1,11 +1,12 @@
 
 [defaults]
-path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/"
+cloud_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/"
 basename = "fake-data"
-num = 30
-freq = 0.5
-table = "sensor_data"
-continuous = true
+db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
+summary_table = "sensor_data"
 ph_ma_window = 120  # window in seconds for ph moving average
 ph_freq = 0.5  # frequency in Hz for ph moving average
 partition_hours = 12  # hours to partition the data for writing, not used yet
+num = 30 # number of samples to generate
+freq = 0.5 # frequency in Hz for the generated data
+continuous = true # whether to generate continuous data or not
