@@ -6,7 +6,7 @@ if sys.version_info >= (3, 11):
 else:
     import toml as tomllib
 
-CONFIG_TOML = os.path.join(os.path.dirname(__file__), "config.toml")
+CONFIG_TOML = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.toml")
 
 # Load defaults from config.toml
 with open(CONFIG_TOML, "rb") as f:
