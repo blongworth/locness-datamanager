@@ -4,14 +4,16 @@ import sqlite3
 
 CREATE_TABLES = """
 CREATE TABLE IF NOT EXISTS rhodamine (
-    datetime_utc INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    datetime_utc INTEGER NOT NULL,
     gain INTEGER, 
     voltage REAL, 
     rho_ppb REAL
 );
 
 CREATE TABLE IF NOT EXISTS ph (
-    datetime_utc INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    datetime_utc INTEGER NOT NULL,
     samp_num INTEGER,
     ph_timestamp INTEGER, 
     v_bat REAL,
@@ -34,7 +36,8 @@ CREATE TABLE IF NOT EXISTS ph (
 );
 
 CREATE TABLE IF NOT EXISTS tsg (
-    datetime_utc INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    datetime_utc INTEGER NOT NULL,
     scan_no INTEGER,
     cond REAL,
     temp REAL,
@@ -46,14 +49,16 @@ CREATE TABLE IF NOT EXISTS tsg (
 );
 
 CREATE TABLE IF NOT EXISTS gps (
-    datetime_utc INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    datetime_utc INTEGER NOT NULL,
     nmea_time_utc INTEGER,
     latitude REAL,
     longitude REAL
 );
 
 CREATE TABLE IF NOT EXISTS resampled_data (
-    datetime_utc INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    datetime_utc INTEGER NOT NULL UNIQUE,
     latitude REAL,
     longitude REAL,
     rho_ppb REAL,
@@ -62,6 +67,12 @@ CREATE TABLE IF NOT EXISTS resampled_data (
     salinity_psu REAL,
     ph_ma REAL
 );
+
+CREATE INDEX IF NOT EXISTS idx_rhodamine_datetime_utc ON rhodamine(datetime_utc);
+CREATE INDEX IF NOT EXISTS idx_ph_datetime_utc ON ph(datetime_utc);
+CREATE INDEX IF NOT EXISTS idx_tsg_datetime_utc ON tsg(datetime_utc);
+CREATE INDEX IF NOT EXISTS idx_gps_datetime_utc ON gps(datetime_utc);
+CREATE INDEX IF NOT EXISTS idx_resampled_data_datetime_utc ON resampled_data(datetime_utc);
 """
     
 def setup_sqlite_db(db_path):
