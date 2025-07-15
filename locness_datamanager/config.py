@@ -29,4 +29,5 @@ def get_config():
     config['ph_freq'] = float(os.environ.get('LOCNESS_PH_FREQ', config.get('ph_freq', 0.5)))
     config['partition_hours'] = float(os.environ.get('LOCNESS_PARTITION_HOURS', config.get('partition_hours', 12)))
     config['db_path'] = os.environ.get('LOCNESS_DB_PATH', config.get('db_path', 'locness.db'))
+    config['summary_table'] = os.environ.get('LOCNESS_SUMMARY_TABLE', config.get('summary_table', 'underway_summary'))
     return config
