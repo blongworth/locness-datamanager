@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS tsg (
     scan_no INTEGER,
     cond REAL,
     temp REAL,
+    salinity REAL,
     hull_temp REAL,
     time_elapsed REAL,
     nmea_time INTEGER,
