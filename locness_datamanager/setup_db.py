@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS gps (
     longitude REAL
 );
 
-CREATE TABLE IF NOT EXISTS resampled_data (
+CREATE TABLE IF NOT EXISTS underway_summary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     datetime_utc INTEGER NOT NULL UNIQUE,
     latitude REAL,

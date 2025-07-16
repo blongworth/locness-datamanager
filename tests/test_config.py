@@ -16,8 +16,18 @@ class TestConfig:
         config = get_config()
         
         # Check for some expected configuration keys
-        expected_keys = ['path', 'basename', 'num', 'freq', 'table', 'continuous']
-        
+        expected_keys = ['cloud_path',
+                         'basename',
+                         'num',
+                         'freq',
+                         'table',
+                         'continuous',
+                         'ph_ma_window',
+                         'ph_freq',
+                         'partition_hours',
+                         'db_path',
+                         'summary_table']
+
         for key in expected_keys:
             assert key in config, f"Expected key '{key}' not found in config"
 

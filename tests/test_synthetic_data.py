@@ -310,7 +310,7 @@ class TestFieldMapping:
         
         # Get resampled data and write back to SQLite
         df = resample_raw_sensor_data(str(sample_sqlite_db), resample_interval='2s')
-        write_resampled_to_sqlite(df, str(sample_sqlite_db))
+        write_resampled_to_sqlite(df, str(sample_sqlite_db), output_table='resampled_data')
         
         # Read from resampled_data table and verify fields
         conn = sqlite3.connect(sample_sqlite_db)
@@ -324,6 +324,8 @@ class TestFieldMapping:
         assert len(df_from_sqlite) > 0
         assert not df_from_sqlite["lat"].isnull().all()
         assert not df_from_sqlite["lon"].isnull().all()
+    
+    
 
 
 class TestDataIntegrity:
@@ -424,7 +426,7 @@ class TestDataIntegrity:
         file_writers.to_parquet(resampled_df, str(parquet_path))
         
         # Write back to SQLite
-        write_resampled_to_sqlite(resampled_df, str(sample_sqlite_db))
+        write_resampled_to_sqlite(resampled_df, str(sample_sqlite_db), output_table='resampled_data')
         
         # Read from all formats and compare
         csv_df = pd.read_csv(csv_path)
