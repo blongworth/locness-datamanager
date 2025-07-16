@@ -3,7 +3,8 @@
 cloud_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/"
 basename = "fake-data"
 db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
-summary_table = "sensor_data"
+#db_path: "C:/Users/CSL 2/Documents/LOCNESS_data/locness.db"
+summary_table = "underway_summary"
 ph_ma_window = 120  # window in seconds for ph moving average
 ph_freq = 0.5  # frequency in Hz for ph moving average
 partition_hours = 12  # hours to partition the data for writing, not used yet
