@@ -8,7 +8,7 @@ import sqlite3
 
 
 from locness_datamanager.synthetic_data import (
-    generate_fluorometer_data,
+    generate_rhodamine_data,
     generate_ph_data,
     generate_tsg_data,
     generate_raw_sensor_batch,
@@ -23,9 +23,9 @@ from locness_datamanager import file_writers
 class TestSyntheticDataGeneration:
     """Test synthetic data generation functions."""
 
-    def test_generate_fluorometer_data_basic(self):
-        """Test basic fluorometer data generation."""
-        df = generate_fluorometer_data(n_records=10, frequency_hz=1.0)
+    def test_generate_rhodamine_data_basic(self):
+        """Test basic rhodamine data generation."""
+        df = generate_rhodamine_data(n_records=10, frequency_hz=1.0)
         
         assert len(df) == 10
         assert list(df.columns) == [
@@ -83,7 +83,7 @@ class TestSyntheticDataGeneration:
     def test_generate_with_custom_start_time(self):
         """Test generation with custom start time."""
         start_time = datetime(2023, 1, 1, 12, 0, 0)
-        df = generate_fluorometer_data(n_records=3, start_time=start_time, frequency_hz=1.0)
+        df = generate_rhodamine_data(n_records=3, start_time=start_time, frequency_hz=1.0)
         
         # Check timestamps are sequential
         timestamps = pd.to_datetime(df["datetime_utc"], unit="s")
@@ -100,11 +100,11 @@ class TestSyntheticDataGeneration:
         """Test generating a batch of all sensor types."""
         batch = generate_raw_sensor_batch(num=10, freq=1.0)
         
-        assert "fluorometer" in batch
+        assert "rhodamine" in batch
         assert "ph" in batch
         assert "tsg" in batch
         
-        assert len(batch["fluorometer"]) == 10
+        assert len(batch["rhodamine"]) == 10
         assert len(batch["tsg"]) == 10
         # pH should have fewer records due to lower frequency
         assert len(batch["ph"]) >= 1
@@ -116,13 +116,13 @@ class TestDataWriting:
     def test_write_to_raw_tables(self, sample_sqlite_db):
         """Test writing synthetic data to raw tables."""
         # Generate sample data
-        fluorometer_df = generate_fluorometer_data(n_records=5)
+        rhodamine_df = generate_rhodamine_data(n_records=5)
         ph_df = generate_ph_data(n_records=3)
         tsg_df = generate_tsg_data(n_records=5)
         
         # Write to database
         write_to_raw_tables(
-            fluorometer_df=fluorometer_df,
+            rhodamine_df=rhodamine_df,
             ph_df=ph_df,
             tsg_df=tsg_df,
             sqlite_path=str(sample_sqlite_db)
@@ -132,7 +132,7 @@ class TestDataWriting:
         import sqlite3
         conn = sqlite3.connect(sample_sqlite_db)
         
-        # Check fluorometer table
+        # Check rhodamine table
         cursor = conn.execute("SELECT COUNT(*) FROM rhodamine")
         assert cursor.fetchone()[0] == 5
         
@@ -150,9 +150,9 @@ class TestDataWriting:
 class TestFieldMapping:
     """Test that all expected fields are present in raw data, resampled data, and CSV outputs."""
 
-    def test_raw_fluorometer_fields_complete(self):
-        """Test that fluorometer raw data has all expected fields."""
-        df = generate_fluorometer_data(n_records=5)
+    def test_raw_rhodamine_fields_complete(self):
+        """Test that rhodamine raw data has all expected fields."""
+        df = generate_rhodamine_data(n_records=5)
 
         expected_fields = ["datetime_utc", "gain", "voltage", "rho_ppb"]
         assert list(df.columns) == expected_fields
@@ -198,12 +198,12 @@ class TestFieldMapping:
     def test_resampled_data_field_mapping(self, sample_sqlite_db):
         """Test that resampled data has all expected fields with correct mapping."""
         # Generate and write raw data
-        fluorometer_df = generate_fluorometer_data(n_records=10)
+        rhodamine_df = generate_rhodamine_data(n_records=10)
         ph_df = generate_ph_data(n_records=5)
         tsg_df = generate_tsg_data(n_records=10)
         
         write_to_raw_tables(
-            fluorometer_df=fluorometer_df,
+            rhodamine_df=rhodamine_df,
             ph_df=ph_df,
             tsg_df=tsg_df,
             sqlite_path=str(sample_sqlite_db)
@@ -227,12 +227,12 @@ class TestFieldMapping:
     def test_broken_resampling_function_detection(self, sample_sqlite_db):
         """Test detection of the broken resampling function that expects wrong column names."""
         # Generate and write raw data
-        fluorometer_df = generate_fluorometer_data(n_records=5)
+        rhodamine_df = generate_rhodamine_data(n_records=5)
         ph_df = generate_ph_data(n_records=3)
         tsg_df = generate_tsg_data(n_records=5)
         
         write_to_raw_tables(
-            fluorometer_df=fluorometer_df,
+            rhodamine_df=rhodamine_df,
             ph_df=ph_df,
             tsg_df=tsg_df,
             sqlite_path=str(sample_sqlite_db)
@@ -245,12 +245,12 @@ class TestFieldMapping:
     def test_resampled_csv_output_fields(self, sample_sqlite_db, tmp_path):
         """Test that CSV output from resampled data has all expected fields."""
         # Generate and write raw data
-        fluorometer_df = generate_fluorometer_data(n_records=10)
+        rhodamine_df = generate_rhodamine_data(n_records=10)
         ph_df = generate_ph_data(n_records=5)
         tsg_df = generate_tsg_data(n_records=10)
         
         write_to_raw_tables(
-            fluorometer_df=fluorometer_df,
+            rhodamine_df=rhodamine_df,
             ph_df=ph_df,
             tsg_df=tsg_df,
             sqlite_path=str(sample_sqlite_db)
@@ -277,12 +277,12 @@ class TestFieldMapping:
     def test_resampled_sqlite_table_fields(self, sample_sqlite_db):
         """Test that resampled data written back to SQLite has all expected fields."""
         # Generate and write raw data
-        fluorometer_df = generate_fluorometer_data(n_records=10)
+        rhodamine_df = generate_rhodamine_data(n_records=10)
         ph_df = generate_ph_data(n_records=5)
         tsg_df = generate_tsg_data(n_records=10)
         
         write_to_raw_tables(
-            fluorometer_df=fluorometer_df,
+            rhodamine_df=rhodamine_df,
             ph_df=ph_df,
             tsg_df=tsg_df,
             sqlite_path=str(sample_sqlite_db)
@@ -316,13 +316,13 @@ class TestDataIntegrity:
     def test_end_to_end_field_preservation(self, sample_sqlite_db, tmp_path):
         """Test that all fields are preserved through the complete pipeline."""
         # Generate raw data
-        fluorometer_df = generate_fluorometer_data(n_records=20, frequency_hz=1.0)
+        rhodamine_df = generate_rhodamine_data(n_records=20, frequency_hz=1.0)
         ph_df = generate_ph_data(n_records=10, frequency_hz=0.5)
         tsg_df = generate_tsg_data(n_records=20, frequency_hz=1.0)
         
         # Write to raw tables
         write_to_raw_tables(
-            fluorometer_df=fluorometer_df,
+            rhodamine_df=rhodamine_df,
             ph_df=ph_df,
             tsg_df=tsg_df,
             sqlite_path=str(sample_sqlite_db)
@@ -384,12 +384,12 @@ class TestDataIntegrity:
     def test_field_consistency_across_formats(self, sample_sqlite_db, tmp_path):
         """Test that field names and values are consistent across different output formats."""
         # Generate and process data
-        fluorometer_df = generate_fluorometer_data(n_records=10)
+        rhodamine_df = generate_rhodamine_data(n_records=10)
         ph_df = generate_ph_data(n_records=5)
         tsg_df = generate_tsg_data(n_records=10)
         
         write_to_raw_tables(
-            fluorometer_df=fluorometer_df,
+            rhodamine_df=rhodamine_df,
             ph_df=ph_df,
             tsg_df=tsg_df,
             sqlite_path=str(sample_sqlite_db)
@@ -430,7 +430,7 @@ class TestDataValidation:
 
     def test_zero_frequency_handling(self):
         """Test handling of zero frequency."""
-        df = generate_fluorometer_data(n_records=3, frequency_hz=0.0)
+        df = generate_rhodamine_data(n_records=3, frequency_hz=0.0)
         assert len(df) == 3
         
         # Should default to 1 second intervals
@@ -447,7 +447,7 @@ class TestDataValidation:
 
     def test_high_frequency_generation(self):
         """Test high frequency data generation."""
-        df = generate_fluorometer_data(n_records=10, frequency_hz=10.0)
+        df = generate_rhodamine_data(n_records=10, frequency_hz=10.0)
         assert len(df) == 10
         
         # Check that timestamps exist and are increasing

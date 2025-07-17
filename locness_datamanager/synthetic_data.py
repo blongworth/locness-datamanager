@@ -11,11 +11,11 @@ from locness_datamanager.resample import load_and_resample_sqlite, write_resampl
 import sqlite3
 from locness_datamanager.setup_db import setup_sqlite_db
 
-# Functions for generating synthetic data for fluorometer, ph, and tsg tables
+# Functions for generating synthetic data for rhodamine, ph, and tsg tables
 
-def generate_fluorometer_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, frequency_hz=1.0):
+def generate_rhodamine_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, frequency_hz=1.0):
     """
-    Generate synthetic fluorometer data matching the fluorometer table schema.
+    Generate synthetic rhodamine data matching the rhodamine table schema.
     Args:
         n_records: Number of records to generate
         base_lat: Base latitude
@@ -41,7 +41,7 @@ def generate_fluorometer_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_
             lat += np.random.uniform(-0.0005, 0.0005)
             lon += np.random.uniform(-0.0005, 0.0005)
         
-        # Generate realistic fluorometer readings
+        # Generate realistic rhodamine readings
         base_concentration = 1.5 + 0.8 * np.sin(i * 0.01) + np.random.normal(0, 0.3)
         concentration = max(0, base_concentration)  # Concentration can't be negative
         
@@ -301,12 +301,12 @@ def write_to_resampled_data_table(df, sqlite_path):
     finally:
         conn.close()
 
-def write_to_raw_tables(fluorometer_df=None, ph_df=None, tsg_df=None, gps_df=None, sqlite_path="sensors.sqlite"):
+def write_to_raw_tables(rhodamine_df=None, ph_df=None, tsg_df=None, gps_df=None, sqlite_path="sensors.sqlite"):
     """
-    Write synthetic data to the raw fluorometer, ph, tsg, and gps tables in SQLite.
+    Write synthetic data to the raw rhodamine, ph, tsg, and gps tables in SQLite.
 
     Args:
-        fluorometer_df: DataFrame with fluorometer data (optional)
+        rhodamine_df: DataFrame with rhodamine data (optional)
         ph_df: DataFrame with pH data (optional)
         tsg_df: DataFrame with TSG data (optional)
         gps_df: DataFrame with GPS data (optional)
@@ -318,9 +318,9 @@ def write_to_raw_tables(fluorometer_df=None, ph_df=None, tsg_df=None, gps_df=Non
         # Create tables using the schema from CREATE_TABLES
         setup_sqlite_db(sqlite_path)
         
-        if fluorometer_df is not None and not fluorometer_df.empty:
-            fluorometer_df.to_sql('fluorometer', conn, if_exists='append', index=False)
-            print(f"Successfully wrote {len(fluorometer_df)} records to fluorometer table")
+        if rhodamine_df is not None and not rhodamine_df.empty:
+            rhodamine_df.to_sql('rhodamine', conn, if_exists='append', index=False)
+            print(f"Successfully wrote {len(rhodamine_df)} records to rhodamine table")
         
         if ph_df is not None and not ph_df.empty:
             ph_df.to_sql('ph', conn, if_exists='append', index=False)
@@ -362,7 +362,7 @@ def generate_raw_sensor_batch(num, freq, start_time=None, base_lat=42.5, base_lo
         start_time = datetime.now() - timedelta(seconds=(num - 1) * delta_seconds)
     
     # Generate data for each sensor type with appropriate frequencies
-    fluorometer_df = generate_fluorometer_data(
+    rhodamine_df = generate_rhodamine_data(
         n_records=num, 
         base_lat=base_lat, 
         base_lon=base_lon, 
@@ -399,7 +399,7 @@ def generate_raw_sensor_batch(num, freq, start_time=None, base_lat=42.5, base_lo
     print(f"  Raw sensor data generation: {t1-t0:.4f} seconds")
     
     return {
-        'fluorometer': fluorometer_df,
+        'rhodamine': rhodamine_df,
         'ph': ph_df,
         'tsg': tsg_df,
         'gps': gps_df
@@ -426,24 +426,24 @@ def generate_time_based_sensor_data(duration_seconds, base_lat=42.5, base_lon=-6
         start_time = datetime.now() - timedelta(seconds=duration_seconds)
     
     # Default sampling rates for each sensor
-    fluorometer_freq = 1.0  # 1 Hz for fluorometer
+    rhodamine_freq = 1.0  # 1 Hz for rhodamine
     ph_freq = 0.5  # 0.5 Hz for pH sensor (moderate sampling)
     tsg_freq = 1.0  # 1 Hz for TSG
     gps_freq = 1.0  # 1 Hz for GPS
 
     # Calculate number of records for each sensor based on duration and frequency
-    fluorometer_records = max(1, int(duration_seconds * fluorometer_freq))
+    rhodamine_records = max(1, int(duration_seconds * rhodamine_freq))
     ph_records = max(1, int(duration_seconds * ph_freq))
     tsg_records = max(1, int(duration_seconds * tsg_freq))
     gps_records = max(1, int(duration_seconds * gps_freq))
 
     # Generate data for each sensor type
-    fluorometer_df = generate_fluorometer_data(
-        n_records=fluorometer_records,
+    rhodamine_df = generate_rhodamine_data(
+        n_records=rhodamine_records,
         base_lat=base_lat,
         base_lon=base_lon,
         start_time=start_time,
-        frequency_hz=fluorometer_freq
+        frequency_hz=rhodamine_freq
     )
     
     ph_df = generate_ph_data(
@@ -469,10 +469,10 @@ def generate_time_based_sensor_data(duration_seconds, base_lat=42.5, base_lon=-6
     )
 
     t1 = time.perf_counter()
-    print(f"  Generated {fluorometer_records} fluorometer, {ph_records} pH, {tsg_records} TSG, {gps_records} GPS records in {t1-t0:.4f} seconds")
+    print(f"  Generated {rhodamine_records} rhodamine, {ph_records} pH, {tsg_records} TSG, {gps_records} GPS records in {t1-t0:.4f} seconds")
 
     return {
-        'fluorometer': fluorometer_df,
+        'rhodamine': rhodamine_df,
         'ph': ph_df,
         'tsg': tsg_df,
         'gps': gps_df
@@ -552,7 +552,7 @@ def main():
                 raw_sqlite_file = f"{basepath}.sqlite"
                 print(f"Writing raw sensor data to {raw_sqlite_file}...")
                 write_to_raw_tables(
-                    fluorometer_df=sensor_data['fluorometer'],
+                    rhodamine_df=sensor_data['rhodamine'],
                     ph_df=sensor_data['ph'],
                     tsg_df=sensor_data['tsg'],
                     gps_df=sensor_data['gps'],
@@ -586,7 +586,7 @@ def main():
         raw_sqlite_file = f"{basepath}.sqlite"
         print(f"Writing raw sensor data to {raw_sqlite_file}...")
         write_to_raw_tables(
-            fluorometer_df=sensor_data['fluorometer'],
+            rhodamine_df=sensor_data['rhodamine'],
             ph_df=sensor_data['ph'],
             tsg_df=sensor_data['tsg'],
             sqlite_path=raw_sqlite_file
@@ -609,10 +609,10 @@ if __name__ == "__main__":
 
 # Example usage of the new sensor-specific functions:
 """
-# Generate fluorometer data
-fluoro_df = generate_fluorometer_data(n_records=100, frequency_hz=1.0)
-print("Fluorometer data shape:", fluoro_df.shape)
-print("Fluorometer columns:", list(fluoro_df.columns))
+# Generate rhodamine data
+fluoro_df = generate_rhodamine_data(n_records=100, frequency_hz=1.0)
+print("rhodamine data shape:", fluoro_df.shape)
+print("rhodamine columns:", list(fluoro_df.columns))
 
 # Generate pH data (slower sampling rate)
 ph_df = generate_ph_data(n_records=10, frequency_hz=0.1)
@@ -630,7 +630,7 @@ print("Batch keys:", list(sensor_batch.keys()))
 
 # Write to SQLite database (uncomment to use)
 # write_to_raw_tables(
-#     fluorometer_df=sensor_batch['fluorometer'],
+#     rhodamine_df=sensor_batch['rhodamine'],
 #     ph_df=sensor_batch['ph'],
 #     tsg_df=sensor_batch['tsg'],
 #

@@ -48,7 +48,7 @@ def sample_sqlite_db(temp_dir):
     """)
     
     cursor.execute("""
-        CREATE TABLE fluorometer (
+        CREATE TABLE rhodamine (
             datetime_utc INTEGER,
             latitude REAL,
             longitude REAL,

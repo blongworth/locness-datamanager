@@ -21,14 +21,14 @@ def read_table(conn, table, columns):
 
 def load_and_resample_sqlite(sqlite_path, resample_interval='2s'):
     """
-    Read and resample data from fluorometer, ph, and tsg tables in a SQLite database.
+    Read and resample data from rhodamine, ph, and tsg tables in a SQLite database.
     Returns a DataFrame with columns: datetime_utc, latitude, longitude, rho_ppb, ph, temp_c, salinity_psu, ph_ma
     """
     conn = sqlite3.connect(sqlite_path)
     # Read tables
     fluoro = read_table(conn, 'rhodamine', ['datetime_utc','rho_ppb'])
-    ph = read_table(conn, 'ph', ['datetime_utc', 'ph'])
-    tsg = read_table(conn, 'tsg', ['datetime_utc', 'temp_c', 'salinity_psu'])
+    ph = read_table(conn, 'ph', ['datetime_utc', 'ph_free'])
+    tsg = read_table(conn, 'tsg', ['datetime_utc', 'temp', 'salinity'])
     gps = read_table(conn, 'gps', ['datetime_utc', 'latitude', 'longitude'])
     conn.close()
 
@@ -134,8 +134,8 @@ def write_outputs(df, basepath, table_name):
 
 def write_resampled_to_sqlite(df, sqlite_path, output_table):
     """
-    Write resampled DataFrame to the resampled_data table in SQLite with integer datetime_utcs.
-    
+    Write resampled DataFrame to the underway_summary table in SQLite with integer datetime_utcs.
+
     Args:
         df: DataFrame with columns: datetime_utc, lat, lon, rhodamine, ph, temp, salinity, ph_ma
         sqlite_path: Path to SQLite database
@@ -156,19 +156,19 @@ def write_resampled_to_sqlite(df, sqlite_path, output_table):
     finally:
         conn.close()
 
-def write_resampled_data_to_sqlite(sqlite_path, resample_interval='2s', output_table='resampled_data'):
+def write_resampled_data_to_sqlite(sqlite_path, resample_interval='2s', output_table='underway_summary'):
     """
-    Load, resample data, and write directly to the resampled_data table in SQLite.
-    
+    Load, resample data, and write directly to the underway_summary table in SQLite.
+
     Args:
         sqlite_path: Path to SQLite database
         resample_interval: Resample interval (default '2s')
-        output_table: Name of output table (default 'resampled_data')
+        output_table: Name of output table (default 'underway_summary')
     """
     # Load and resample data
     df = load_and_resample_sqlite(sqlite_path, resample_interval)
-    
-    # Write to the resampled_data table
+
+    # Write to the underway_summary table
     write_resampled_to_sqlite(df, sqlite_path, output_table)
     
     return df
@@ -179,7 +179,7 @@ def main():
     parser = argparse.ArgumentParser(description="Resample and combine SQLite sensor tables, write to CSV, Parquet, and DuckDB.")
     parser.add_argument('--sqlite-path', type=str, default=config.get('db_path'), help='Path to SQLite database (default from config)')
     parser.add_argument('--path', type=str, default=config.get('cloud_path', '.'), help='Directory to write output files (default from config)')
-    parser.add_argument('--basename', type=str, default=config.get('basename', 'resampled_data'), help='Base name for output files (no extension)')
+    parser.add_argument('--basename', type=str, default=config.get('basename', 'test_data'), help='Base name for output files (no extension)')
     parser.add_argument('--table', type=str, default=config.get('summary_table', 'underway_summary'), help='SQLite table name (default from config)')
     parser.add_argument('--resample', type=str, default='2s', help='Resample interval (default: 2s)')
     parser.add_argument('--poll', action='store_true', help='Continuously poll for new records')
