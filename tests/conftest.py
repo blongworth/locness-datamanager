@@ -1,7 +1,6 @@
 """Configuration for pytest tests."""
 import pytest
 import tempfile
-import os
 from pathlib import Path
 
 
@@ -16,7 +15,7 @@ def temp_dir():
 def sample_csv_file(temp_dir):
     """Create a sample CSV file for testing."""
     csv_file = temp_dir / "sample.csv"
-    csv_content = """timestamp,lat,lon,temp,salinity,rhodamine,ph
+    csv_content = """datetime_utc,lat,lon,temp,salinity,rhodamine,ph
 1640995200,42.5,-69.5,15.2,35.1,1.2,8.1
 1640995201,42.501,-69.501,15.3,35.2,1.3,8.2
 1640995202,42.502,-69.502,15.1,35.0,1.1,8.0
@@ -36,8 +35,8 @@ def sample_sqlite_db(temp_dir):
     
     # Create sample tables
     cursor.execute("""
-        CREATE TABLE resampled_data (
-            timestamp INTEGER,
+        CREATE TABLE underway_summary (
+            datetime_utc INTEGER,
             lat REAL,
             lon REAL,
             rhodamine REAL,
@@ -49,8 +48,8 @@ def sample_sqlite_db(temp_dir):
     """)
     
     cursor.execute("""
-        CREATE TABLE fluorometer (
-            timestamp INTEGER,
+        CREATE TABLE rhodamine (
+            datetime_utc INTEGER,
             latitude REAL,
             longitude REAL,
             gain INTEGER,
@@ -61,7 +60,7 @@ def sample_sqlite_db(temp_dir):
     
     cursor.execute("""
         CREATE TABLE tsg (
-            timestamp INTEGER,
+            datetime_utc INTEGER,
             scan_no INTEGER,
             cond REAL,
             temp REAL,
@@ -75,7 +74,7 @@ def sample_sqlite_db(temp_dir):
     
     cursor.execute("""
         CREATE TABLE ph (
-            pc_timestamp TEXT,
+            datetime_utc TEXT,
             samp_num INTEGER,
             ph_timestamp TEXT,
             v_bat REAL,

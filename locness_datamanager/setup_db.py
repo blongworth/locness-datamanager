@@ -2,7 +2,7 @@
 import sys
 import sqlite3
 import os
-from .config import get_config
+from locness_datamanager.config import get_config
 
 CREATE_TABLES_TEMPLATE = """
 CREATE TABLE IF NOT EXISTS rhodamine (
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS ph (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     datetime_utc INTEGER NOT NULL,
     samp_num INTEGER,
-    ph_timestamp INTEGER, 
+    ph_timestamp TEXT, 
     v_bat REAL,
     v_bias_pos REAL,
     v_bias_neg REAL, 
@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS tsg (
     scan_no INTEGER,
     cond REAL,
     temp REAL,
+    salinity REAL,
     hull_temp REAL,
     time_elapsed REAL,
     nmea_time INTEGER,
@@ -58,23 +59,24 @@ CREATE TABLE IF NOT EXISTS gps (
     longitude REAL
 );
 
-CREATE TABLE IF NOT EXISTS {summary_table} (
+CREATE TABLE IF NOT EXISTS underway_summary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     datetime_utc INTEGER NOT NULL UNIQUE,
     latitude REAL,
     longitude REAL,
     rho_ppb REAL,
-    ph REAL,
-    temp_c REAL,
-    salinity_psu REAL,
-    ph_ma REAL
+    ph_free REAL,
+    temp REAL,
+    salinity REAL,
+    ph_free_ma REAL
 );
 
 CREATE INDEX IF NOT EXISTS idx_rhodamine_datetime_utc ON rhodamine(datetime_utc);
 CREATE INDEX IF NOT EXISTS idx_ph_datetime_utc ON ph(datetime_utc);
 CREATE INDEX IF NOT EXISTS idx_tsg_datetime_utc ON tsg(datetime_utc);
 CREATE INDEX IF NOT EXISTS idx_gps_datetime_utc ON gps(datetime_utc);
-CREATE INDEX IF NOT EXISTS idx_{summary_table}_datetime_utc ON {summary_table}(datetime_utc);
+CREATE INDEX IF NOT EXISTS idx_underway_summary_datetime_utc ON underway_summary(datetime_utc);
+PRAGMA journal_mode=WAL;
 """
     
 def setup_sqlite_db(db_path):
@@ -92,8 +94,7 @@ def setup_sqlite_db(db_path):
     
     conn = sqlite3.connect(db_path)
     # Enable WAL mode for concurrency
-    conn.executescript(create_tables_sql)
-    conn.execute('PRAGMA journal_mode=WAL;')
+    conn.executescript(CREATE_TABLES_TEMPLATE)
     print(f"SQLite database initialized at {db_path} (WAL mode enabled)")
     print(f"Summary table name: {summary_table}")
     conn.close()
