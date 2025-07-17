@@ -85,18 +85,10 @@ def setup_sqlite_db(db_path):
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir)
     
-    # Get config to determine summary table name
-    config = get_config()
-    summary_table = config.get('summary_table', 'resampled_data')
-    
-    # Format the CREATE_TABLES template with the summary table name
-    create_tables_sql = CREATE_TABLES_TEMPLATE.format(summary_table=summary_table)
-    
     conn = sqlite3.connect(db_path)
     # Enable WAL mode for concurrency
     conn.executescript(CREATE_TABLES_TEMPLATE)
     print(f"SQLite database initialized at {db_path} (WAL mode enabled)")
-    print(f"Summary table name: {summary_table}")
     conn.close()
 
 def main():

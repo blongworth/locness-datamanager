@@ -5,6 +5,7 @@ import time
 from typing import Optional
 import os
 from locness_datamanager import file_writers
+import warnings
 
 # TODO: correct field names to match database schema
 # TODO: add error handling for database connection and queries
@@ -19,46 +20,55 @@ def read_table(conn, table, columns):
         df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], unit='s')
     return df
 
-def load_and_resample_sqlite(sqlite_path, resample_interval='2s'):
+def load_sqlite_tables(sqlite_path):
     """
-    Read and resample data from rhodamine, ph, and tsg tables in a SQLite database.
-    Returns a DataFrame with columns: datetime_utc, latitude, longitude, rho_ppb, ph, temp_c, salinity_psu, ph_ma
+    Load raw tables from SQLite and return as DataFrames.
+    Returns: fluoro, ph, tsg, gps DataFrames
     """
     conn = sqlite3.connect(sqlite_path)
-    # Read tables
     fluoro = read_table(conn, 'rhodamine', ['datetime_utc','rho_ppb'])
     ph = read_table(conn, 'ph', ['datetime_utc', 'ph_free'])
     tsg = read_table(conn, 'tsg', ['datetime_utc', 'temp', 'salinity'])
     gps = read_table(conn, 'gps', ['datetime_utc', 'latitude', 'longitude'])
     conn.close()
+    return fluoro, ph, tsg, gps
 
+def resample_tables(fluoro, ph, tsg, gps, resample_interval='2s'):
+    """
+    Resample each table to the given interval and join into a single DataFrame.
+    """
     # Set datetime_utc as index and ensure datetime
-    fluoro['datetime_utc'] = pd.to_datetime(fluoro['datetime_utc'])
-    ph['datetime_utc'] = pd.to_datetime(ph['datetime_utc'])
-    tsg['datetime_utc'] = pd.to_datetime(tsg['datetime_utc'])
-    gps['datetime_utc'] = pd.to_datetime(gps['datetime_utc'])
-    fluoro = fluoro.set_index('datetime_utc')
-    ph = ph.set_index('datetime_utc')
-    tsg = tsg.set_index('datetime_utc')
-    gps = gps.set_index('datetime_utc')
-
-    # Resample to every 2 seconds
+    for name, df in zip(['rhodamine', 'ph', 'tsg', 'gps'], [fluoro, ph, tsg, gps]):
+        if 'datetime_utc' not in df.columns:
+            warnings.warn(f"Table '{name}' missing 'datetime_utc' column or is empty. Skipping.")
+            df_empty = pd.DataFrame()
+            if name == 'rhodamine': fluoro = df_empty
+            elif name == 'ph': ph = df_empty
+            elif name == 'tsg': tsg = df_empty
+            elif name == 'gps': gps = df_empty
+            continue
+        df['datetime_utc'] = pd.to_datetime(df['datetime_utc'])
+        if df['datetime_utc'].duplicated().any():
+            warnings.warn(f"Duplicate timestamps found in {name} table. Dropping duplicates.")
+        df = df.drop_duplicates(subset='datetime_utc').set_index('datetime_utc')
+        if name == 'rhodamine': fluoro = df
+        elif name == 'ph': ph = df
+        elif name == 'tsg': tsg = df
+        elif name == 'gps': gps = df
+    # Resample
     fluoro_res = fluoro.resample(resample_interval).nearest()
     ph_res = ph.resample(resample_interval).nearest()
     tsg_res = tsg.resample(resample_interval).nearest()
     gps_res = gps.resample(resample_interval).nearest()
-
     # Combine all on datetime_utc
     df = fluoro_res.join([ph_res, tsg_res, gps_res], how='outer')
     df = df.reset_index()
-    # Reorder columns
+    # Ensure all expected columns exist
     cols = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_free', 'temp', 'salinity']
+    for col in cols:
+        if col not in df.columns:
+            df[col] = pd.NA
     df = df[cols]
-    # Add moving average of pH
-    config = get_config()
-    window_seconds = config.get('ph_ma_window', 120)
-    freq_hz = config.get('ph_freq', 0.5)
-    df = add_ph_moving_average(df, window_seconds=window_seconds, freq_hz=freq_hz)
     return df
 
 def add_ph_moving_average(df, window_seconds=120, freq_hz=1.0):
@@ -73,6 +83,27 @@ def add_ph_moving_average(df, window_seconds=120, freq_hz=1.0):
         df = df.reset_index(drop=True)
     window_size = max(1, int(window_seconds * freq_hz))
     df['ph_free_ma'] = df['ph_free'].rolling(window=window_size, min_periods=1).mean()
+    return df
+
+def add_computed_fields(df, config=None):
+    """
+    Add computed columns (e.g., moving average pH) to the DataFrame.
+    """
+    if config is None:
+        config = get_config()
+    window_seconds = config.get('ph_ma_window', 120)
+    freq_hz = config.get('ph_freq', 0.5)
+    df = add_ph_moving_average(df, window_seconds=window_seconds, freq_hz=freq_hz)
+    return df
+
+def load_and_resample_sqlite(sqlite_path, resample_interval='2s'):
+    """
+    Load, resample, and add computed fields to sensor data from SQLite.
+    Returns a DataFrame with columns: datetime_utc, latitude, longitude, rho_ppb, ph, temp_c, salinity_psu, ph_ma
+    """
+    fluoro, ph, tsg, gps = load_sqlite_tables(sqlite_path)
+    df = resample_tables(fluoro, ph, tsg, gps, resample_interval)
+    df = add_computed_fields(df)
     return df
 
 def poll_new_records(
@@ -200,16 +231,14 @@ def main():
                 if not new_df.empty:
                     print(f"Writing {len(new_df)} new records...")
                     write_outputs(new_df, basepath, args.table)
-                    if args.write_to_sqlite:
-                        write_resampled_to_sqlite(new_df, args.sqlite_path)
+                    write_resampled_to_sqlite(new_df, args.sqlite_path, output_table=args.table)
                     last_ts = new_df['datetime_utc'].max()
         except KeyboardInterrupt:
             print("\nStopped polling.")
     else:
         df = load_and_resample_sqlite(args.sqlite_path, resample_interval=args.resample)
         write_outputs(df, basepath, args.table)
-        if args.write_to_sqlite:
-            write_resampled_to_sqlite(df, args.sqlite_path)
+        write_resampled_to_sqlite(df, args.sqlite_path, output_table=args.table)
 
 if __name__ == "__main__":
     main()

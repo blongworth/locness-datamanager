@@ -1,9 +1,10 @@
 
 [paths]
-cloud_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/"
+#cloud_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/"
+cloud_path = "C:/Users/CSL 2/Documents/LOCNESS_data/"
 basename = "fake-data"
-db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
-#db_path: "C:/Users/CSL 2/Documents/LOCNESS_data/locness.db"
+#db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
+db_path= "C:/Users/CSL 2/Documents/LOCNESS_data/locness.db"
 
 [resampling]
 ph_ma_window = 120  # window in seconds for ph moving average
