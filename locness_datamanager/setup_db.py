@@ -98,7 +98,7 @@ def setup_sqlite_db(db_path):
     print(f"Summary table name: {summary_table}")
     conn.close()
 
-if __name__ == "__main__":
+def main():
     # Use command line argument if provided, otherwise use config
     if len(sys.argv) >= 2:
         db_path = sys.argv[1]
@@ -109,3 +109,6 @@ if __name__ == "__main__":
             print("Error: db_path not found in config")
             sys.exit(1)
     setup_sqlite_db(db_path)
+
+if __name__ == "__main__":
+    main()
