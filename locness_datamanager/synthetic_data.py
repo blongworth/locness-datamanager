@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
-from locness_datamanager.resample import add_ph_moving_average, load_and_resample_sqlite, write_resampled_to_sqlite
+from locness_datamanager.resample import load_and_resample_sqlite, write_resampled_to_sqlite
 import sqlite3
 from locness_datamanager.setup_db import setup_sqlite_db
 
@@ -23,7 +23,7 @@ def generate_fluorometer_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_
         start_time: Optional datetime to start timestamps
         frequency_hz: Sampling frequency in Hz
     Returns:
-        pandas.DataFrame with columns: timestamp, latitude, longitude, gain, voltage, concentration
+        pandas.DataFrame with columns: datetime_utc, gain, voltage, rho_ppb
     """
     if start_time is None:
         current_time = datetime.now()
@@ -57,6 +57,44 @@ def generate_fluorometer_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_
             "gain": gain,
             "voltage": voltage,
             "rho_ppb": concentration,
+        }
+        data.append(record)
+    
+    return pd.DataFrame(data)
+
+def generate_gps_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, frequency_hz=1.0):
+    """
+    Generate synthetic GPS data matching the GPS table schema.
+    Args:
+        n_records: Number of records to generate
+        base_lat: Base latitude
+        base_lon: Base longitude
+        start_time: Optional datetime to start timestamps
+        frequency_hz: Sampling frequency in Hz
+    Returns:
+        pandas.DataFrame with columns: datetime_utc, nmea_time_utc, latitude, longitude
+    """
+    if start_time is None:
+        current_time = datetime.now()
+    else:
+        current_time = start_time
+    delta_seconds = 1.0 / frequency_hz if frequency_hz > 0 else 1.0
+    
+    data = []
+    lat = base_lat
+    lon = base_lon
+    
+    for i in range(n_records):
+        # Small random movement to simulate realistic GPS drift
+        if i > 0:
+            lat += np.random.uniform(-0.0005, 0.0005)
+            lon += np.random.uniform(-0.0005, 0.0005)
+        
+        record = {
+            "datetime_utc": int((current_time + timedelta(seconds=i * delta_seconds)).timestamp()),
+            "nmea_time_utc": (current_time + timedelta(seconds=i * delta_seconds)).strftime('%Y-%m-%d %H:%M:%S'),
+            "latitude": lat,
+            "longitude": lon,
         }
         data.append(record)
     
@@ -103,10 +141,10 @@ def generate_ph_data(n_records=1, start_time=None, frequency_hz=0.1):
             "cevk_std": np.random.uniform(0.001, 0.02),  # Standard deviation
             "ce_ik": np.random.normal(0, 0.01),  # Counter electrode current
             "i_sub": np.random.normal(0, 0.001),  # Substrate current
-            "cal_temp": 20.0 + np.random.normal(0, 1.0),  # Calibration temperature
-            "cal_sal": 35.0 + np.random.normal(0, 1.0),  # Calibration salinity
-            "k0": -0.5 + np.random.normal(0, 0.1),  # Calibration coefficient K0
-            "k2": 0.05 + np.random.normal(0, 0.01),  # Calibration coefficient K2
+            "cal_temp": 20.0,
+            "cal_sal": 35.0,
+            "k0": -0.5,
+            "k2": 0.05,
             "ph_free": base_ph + np.random.normal(0, 0.02),  # Free pH scale
             "ph_total": base_ph + 0.1 + np.random.normal(0, 0.02),  # Total pH scale
         }
@@ -154,7 +192,7 @@ def generate_tsg_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=Non
         cond = salinity * 1.7 + temp * 0.02 + np.random.normal(0, 0.1)
         
         record = {
-            "timestamp": int(timestamp_dt.timestamp()),
+            "datetime_utc": int(timestamp_dt.timestamp()),
             "scan_no": i + 1,
             "cond": max(0, cond),  # Conductivity (S/m)
             "temp": temp,  # Temperature (°C)
@@ -169,49 +207,11 @@ def generate_tsg_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=Non
     
     return pd.DataFrame(data)
 
-def generate(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, frequency_hz=1.0):
-    """
-    Generate synthetic oceanographic data.
-    Args:
-        n_records: Number of records to generate
-        base_lat: Base latitude
-        base_lon: Base longitude
-        start_time: Optional datetime to start timestamps
-    Returns:
-        pandas.DataFrame with synthetic data
-    """
-    if start_time is None:
-        current_time = datetime.now()
-    else:
-        current_time = start_time
-    delta_seconds = 1.0 / frequency_hz if frequency_hz > 0 else 1.0
-    data = []
-    lat = base_lat
-    lon = base_lon
-    for i in range(n_records):
-        # Move a random number of degrees (small, to simulate realistic movement)
-        delta_lat = np.random.uniform(-0.0005, 0.0005)  # ~±50 meters in degrees latitude
-        delta_lon = np.random.uniform(-0.0005, 0.0005)  # ~±50 meters in degrees longitude
-        if i > 0:
-            lat += delta_lat
-            lon += delta_lon
-        record = {
-            "timestamp": current_time + timedelta(seconds=i * delta_seconds),
-            "lat": lat,
-            "lon": lon,
-            "temp": 15 + 5 * np.sin(i * 0.02) + np.random.normal(0, 0.5),
-            "salinity": 35 + 2 * np.sin(i * 0.015) + np.random.normal(0, 0.2),
-            "rhodamine": min(500, np.random.exponential(scale=1.25)),
-            "ph": 8.1 + 0.3 * np.sin(i * 0.025) + np.random.normal(0, 0.05),
-        }
-        data.append(record)
-    return pd.DataFrame(data)
-
 def parse_args():
     """Parse command-line arguments."""
     config = get_config()
     parser = argparse.ArgumentParser(description="Generate synthetic oceanographic data and write to CSV, Parquet, and SQLite.")
-    parser.add_argument('--path', type=str, default=config['cloud_path'], help='Directory to write output files (default: current directory)')
+    parser.add_argument('--path', type=str, help='Directory to write output files (default: current directory)')
     parser.add_argument('--basename', type=str, default=config['basename'], help='Base name for output files (no extension)')
     parser.add_argument('--time', type=float, default=60.0, help='Duration of data to generate in seconds (default: 60)')
     parser.add_argument('--table', type=str, default='underway_summary', help='SQLite table name (default: underway_summary)')
@@ -269,22 +269,6 @@ def write_outputs(df,
     for k, v in timings.items():
         print(f"  {k.capitalize()} write: {v:.4f} seconds")
 
-def generate_batch(num, freq):
-    """Generate a batch of synthetic data and return the DataFrame and timing."""
-    print(f"Generating {num} samples at {freq} Hz...")
-    t0 = time.perf_counter()
-    # set start_time so last sample is now
-    delta_seconds = 1.0 / freq if freq > 0 else 1.0
-    start_time = datetime.now() - timedelta(seconds=(num - 1) * delta_seconds)
-    df = generate(n_records=num, frequency_hz=freq, start_time=start_time)
-    # Add moving average of pH
-    config = get_config()
-    window_seconds = config.get('ph_ma_window', 120)
-    df = add_ph_moving_average(df, window_seconds=window_seconds, freq_hz=freq)
-    t1 = time.perf_counter()
-    print(f"  Data generation: {t1-t0:.4f} seconds")
-    return df
-
 def write_to_resampled_data_table(df, sqlite_path):
     """
     Write DataFrame to the resampled_data table with integer timestamps.
@@ -296,18 +280,20 @@ def write_to_resampled_data_table(df, sqlite_path):
     df_copy = df.copy()
     
     # Convert datetime timestamps to Unix timestamps (integers)
-    if pd.api.types.is_datetime64_any_dtype(df_copy['timestamp']):
-        df_copy['timestamp'] = df_copy['timestamp'].astype('int64') // 10**9
+    if pd.api.types.is_datetime64_any_dtype(df_copy['datetime_utc']):
+        df_copy['datetime_utc'] = df_copy['datetime_utc'].astype('int64') // 10**9
     
     # Ensure column order matches the resampled_data table
-    expected_columns = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity', 'ph_ma']
-    
+    expected_columns = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph', 'temp_c', 'salinity_psu', 'ph_ma']
+
     # Only keep columns that exist in the DataFrame and are expected
     available_columns = [col for col in expected_columns if col in df_copy.columns]
     df_copy = df_copy[available_columns]
     
     conn = sqlite3.connect(sqlite_path)
     try:
+        # Create tables using the schema from CREATE_TABLES
+        setup_sqlite_db(sqlite_path)
         df_copy.to_sql('resampled_data', conn, if_exists='append', index=False)
         print(f"Successfully wrote {len(df_copy)} records to resampled_data table")
     except Exception as e:
@@ -315,14 +301,15 @@ def write_to_resampled_data_table(df, sqlite_path):
     finally:
         conn.close()
 
-def write_to_raw_tables(fluorometer_df=None, ph_df=None, tsg_df=None, sqlite_path="sensors.sqlite"):
+def write_to_raw_tables(fluorometer_df=None, ph_df=None, tsg_df=None, gps_df=None, sqlite_path="sensors.sqlite"):
     """
-    Write synthetic data to the raw fluorometer, ph, and tsg tables in SQLite.
-    
+    Write synthetic data to the raw fluorometer, ph, tsg, and gps tables in SQLite.
+
     Args:
         fluorometer_df: DataFrame with fluorometer data (optional)
         ph_df: DataFrame with pH data (optional)
         tsg_df: DataFrame with TSG data (optional)
+        gps_df: DataFrame with GPS data (optional)
         sqlite_path: Path to SQLite database
     """
     conn = sqlite3.connect(sqlite_path)
@@ -342,7 +329,11 @@ def write_to_raw_tables(fluorometer_df=None, ph_df=None, tsg_df=None, sqlite_pat
         if tsg_df is not None and not tsg_df.empty:
             tsg_df.to_sql('tsg', conn, if_exists='append', index=False)
             print(f"Successfully wrote {len(tsg_df)} records to tsg table")
-            
+
+        if gps_df is not None and not gps_df.empty:
+            gps_df.to_sql('gps', conn, if_exists='append', index=False)
+            print(f"Successfully wrote {len(gps_df)} records to gps table")
+
     except Exception as e:
         print(f"Error writing to raw tables: {e}")
     finally:
@@ -379,7 +370,6 @@ def generate_raw_sensor_batch(num, freq, start_time=None, base_lat=42.5, base_lo
         frequency_hz=freq
     )
     
-    # pH sensors typically sample much slower
     ph_freq = min(freq, 0.5)  # Max 0.5 Hz for pH sensor
     ph_records = max(1, int(num * ph_freq / freq))
     ph_df = generate_ph_data(
@@ -396,13 +386,23 @@ def generate_raw_sensor_batch(num, freq, start_time=None, base_lat=42.5, base_lo
         frequency_hz=freq
     )
     
+    # Generate GPS data at the same frequency as TSG
+    gps_df = generate_gps_data(
+        n_records=num, 
+        base_lat=base_lat, 
+        base_lon=base_lon, 
+        start_time=start_time, 
+        frequency_hz=freq
+    )
+    
     t1 = time.perf_counter()
     print(f"  Raw sensor data generation: {t1-t0:.4f} seconds")
     
     return {
         'fluorometer': fluorometer_df,
         'ph': ph_df,
-        'tsg': tsg_df
+        'tsg': tsg_df,
+        'gps': gps_df
     }
 
 def generate_time_based_sensor_data(duration_seconds, base_lat=42.5, base_lon=-69.5, start_time=None):
@@ -429,12 +429,14 @@ def generate_time_based_sensor_data(duration_seconds, base_lat=42.5, base_lon=-6
     fluorometer_freq = 1.0  # 1 Hz for fluorometer
     ph_freq = 0.5  # 0.5 Hz for pH sensor (moderate sampling)
     tsg_freq = 1.0  # 1 Hz for TSG
-    
+    gps_freq = 1.0  # 1 Hz for GPS
+
     # Calculate number of records for each sensor based on duration and frequency
     fluorometer_records = max(1, int(duration_seconds * fluorometer_freq))
     ph_records = max(1, int(duration_seconds * ph_freq))
     tsg_records = max(1, int(duration_seconds * tsg_freq))
-    
+    gps_records = max(1, int(duration_seconds * gps_freq))
+
     # Generate data for each sensor type
     fluorometer_df = generate_fluorometer_data(
         n_records=fluorometer_records,
@@ -457,14 +459,23 @@ def generate_time_based_sensor_data(duration_seconds, base_lat=42.5, base_lon=-6
         start_time=start_time,
         frequency_hz=tsg_freq
     )
-    
+
+    gps_df = generate_gps_data(
+        n_records=gps_records,
+        base_lat=base_lat,
+        base_lon=base_lon,
+        start_time=start_time,
+        frequency_hz=gps_freq
+    )
+
     t1 = time.perf_counter()
-    print(f"  Generated {fluorometer_records} fluorometer, {ph_records} pH, {tsg_records} TSG records in {t1-t0:.4f} seconds")
-    
+    print(f"  Generated {fluorometer_records} fluorometer, {ph_records} pH, {tsg_records} TSG, {gps_records} GPS records in {t1-t0:.4f} seconds")
+
     return {
         'fluorometer': fluorometer_df,
         'ph': ph_df,
-        'tsg': tsg_df
+        'tsg': tsg_df,
+        'gps': gps_df
     }
 
 def write_resampled_outputs(df, basepath, write_csv=False, write_parquet=False, write_sqlite=False):
@@ -472,7 +483,7 @@ def write_resampled_outputs(df, basepath, write_csv=False, write_parquet=False, 
     Write resampled DataFrame to selected outputs.
     
     Args:
-        df: Resampled DataFrame with columns: timestamp, lat, lon, rhodamine, ph, temp, salinity, ph_ma
+        df: Resampled DataFrame with columns: datetime_utc, lat, lon, rhodamine, ph, temp, salinity, ph_ma
         basepath: Base path for output files
         write_csv: Whether to write CSV output
         write_parquet: Whether to write Parquet output
@@ -511,97 +522,6 @@ def write_resampled_outputs(df, basepath, write_csv=False, write_parquet=False, 
         for k, v in timings.items():
             print(f"  {k.capitalize()} write: {v:.4f} seconds")
 
-def resample_sensor_data(sqlite_path, resample_interval='2S'):
-    """
-    Load raw sensor data from SQLite and resample it.
-    
-    Args:
-        sqlite_path: Path to SQLite database containing raw sensor tables
-        resample_interval: Resample interval (e.g., '2S' for 2 seconds)
-    
-    Returns:
-        DataFrame: Resampled data with pH moving average
-    """
-    print(f"Loading and resampling data from {sqlite_path} with interval {resample_interval}...")
-    t0 = time.perf_counter()
-    
-    # Load and resample the data
-    df = load_and_resample_sqlite(sqlite_path, resample_interval)
-    
-    t1 = time.perf_counter()
-    print(f"  Resampling completed in {t1-t0:.4f} seconds, {len(df)} records")
-    
-    return df
-
-def resample_raw_sensor_data(sqlite_path, resample_interval='2s'):
-    """
-    Load raw sensor data from SQLite and resample it for our specific schema.
-    
-    Args:
-        sqlite_path: Path to SQLite database containing raw sensor tables
-        resample_interval: Resample interval (e.g., '2s' for 2 seconds)
-    
-    Returns:
-        DataFrame: Resampled data with pH moving average
-    """
-    print(f"Loading and resampling raw sensor data from {sqlite_path} with interval {resample_interval}...")
-    t0 = time.perf_counter()
-    
-    conn = sqlite3.connect(sqlite_path)
-    try:
-        # Read tables with correct column mappings
-        # Fluorometer: timestamp, latitude->lat, longitude->lon, concentration->rhodamine
-        fluoro_query = "SELECT timestamp, latitude as lat, longitude as lon, concentration as rhodamine FROM fluorometer"
-        fluoro = pd.read_sql_query(fluoro_query, conn)
-        
-        # pH: use ph_free as ph value, and get timestamp from pc_timestamp
-        ph_query = "SELECT strftime('%s', pc_timestamp) as timestamp, ph_free as ph FROM ph"
-        ph = pd.read_sql_query(ph_query, conn)
-        
-        # TSG: timestamp, temp, calculate salinity from conductivity (simplified)
-        # For now, we'll use a simplified salinity calculation: salinity ≈ conductivity / 1.7
-        tsg_query = "SELECT timestamp, temp, cond/1.7 as salinity FROM tsg"
-        tsg = pd.read_sql_query(tsg_query, conn)
-        
-    finally:
-        conn.close()
-    
-    # Convert integer timestamps to datetime
-    fluoro['timestamp'] = pd.to_datetime(fluoro['timestamp'], unit='s')
-    ph['timestamp'] = pd.to_datetime(pd.to_numeric(ph['timestamp'], errors='coerce'), unit='s')
-    tsg['timestamp'] = pd.to_datetime(tsg['timestamp'], unit='s')
-    
-    # Set timestamp as index
-    fluoro = fluoro.set_index('timestamp')
-    ph = ph.set_index('timestamp')
-    tsg = tsg.set_index('timestamp')
-
-    # Resample to specified interval
-    fluoro_res = fluoro.resample(resample_interval).nearest()
-    ph_res = ph.resample(resample_interval).nearest()
-    tsg_res = tsg.resample(resample_interval).nearest()
-
-    # Combine all on timestamp
-    df = fluoro_res.join([ph_res, tsg_res], how='outer')
-    df = df.reset_index()
-    
-    # Reorder columns to match expected format
-    cols = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity']
-    df = df[cols]
-    
-    # Add moving average of pH
-    config = get_config()
-    window_seconds = config.get('ph_ma_window', 120)
-    # Calculate frequency based on resample interval
-    interval_seconds = pd.Timedelta(resample_interval).total_seconds()
-    freq_hz = 1.0 / interval_seconds
-    df = add_ph_moving_average(df, window_seconds=window_seconds, freq_hz=freq_hz)
-    
-    t1 = time.perf_counter()
-    print(f"  Resampling completed in {t1-t0:.4f} seconds, {len(df)} records")
-    
-    return df
-
 def main():
     args = parse_args()
     basepath = os.path.join(args.path, args.basename)
@@ -635,11 +555,12 @@ def main():
                     fluorometer_df=sensor_data['fluorometer'],
                     ph_df=sensor_data['ph'],
                     tsg_df=sensor_data['tsg'],
+                    gps_df=sensor_data['gps'],
                     sqlite_path=raw_sqlite_file
                 )
                 
                 # Resample the data from SQLite
-                resampled_df = resample_raw_sensor_data(raw_sqlite_file, args.resample_interval)
+                resampled_df = load_and_resample_sqlite(raw_sqlite_file, args.resample_interval)
                 
                 # Write resampled data to selected outputs
                 if any_selected:
@@ -672,7 +593,7 @@ def main():
         )
         
         # Resample the data from SQLite
-        resampled_df = resample_raw_sensor_data(raw_sqlite_file, args.resample_interval)
+        resampled_df = load_and_resample_sqlite(raw_sqlite_file, args.resample_interval)
         
         # Write resampled data to selected outputs
         if any_selected:
@@ -712,6 +633,7 @@ print("Batch keys:", list(sensor_batch.keys()))
 #     fluorometer_df=sensor_batch['fluorometer'],
 #     ph_df=sensor_batch['ph'],
 #     tsg_df=sensor_batch['tsg'],
+#
 #     sqlite_path="test_sensors.sqlite"
 # )
 """

@@ -6,18 +6,19 @@ import tempfile
 from pathlib import Path
 import sqlite3
 
+
 from locness_datamanager.synthetic_data import (
     generate_fluorometer_data,
     generate_ph_data,
     generate_tsg_data,
-    generate,
     generate_raw_sensor_batch,
     write_to_raw_tables,
-    resample_raw_sensor_data,
 )
 from locness_datamanager.resample import load_and_resample_sqlite, write_resampled_to_sqlite
 from locness_datamanager import file_writers
 
+#TODO: fix tests
+#TODO: return generated data with pandas timestamp, not int
 
 class TestSyntheticDataGeneration:
     """Test synthetic data generation functions."""
@@ -264,7 +265,7 @@ class TestFieldMapping:
         
         # Read back and verify fields
         df_read = pd.read_csv(csv_path)
-        expected_columns = ['timestamp', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity', 'ph_ma']
+        expected_columns = ['datetime_utc', 'lat', 'lon', 'rhodamine', 'ph', 'temp', 'salinity', 'ph_ma']
         assert list(df_read.columns) == expected_columns
         
         # Verify data integrity

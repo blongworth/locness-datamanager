@@ -293,7 +293,7 @@ class SyntheticDataGenerator:
         current_time = datetime.now()
         for i in range(n_records):
             record = {
-                "timestamp": current_time + timedelta(seconds=i),
+                "datetime_utc": current_time + timedelta(seconds=i),
                 "lat": base_lat + np.random.normal(0, 0.01),
                 "lon": base_lon + np.random.normal(0, 0.01),
                 "temp": np.random.normal(15.0, 3.0),
