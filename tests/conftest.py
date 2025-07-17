@@ -35,7 +35,7 @@ def sample_sqlite_db(temp_dir):
     
     # Create sample tables
     cursor.execute("""
-        CREATE TABLE resampled_data (
+        CREATE TABLE underway_summary (
             datetime_utc INTEGER,
             lat REAL,
             lon REAL,

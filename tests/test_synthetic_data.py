@@ -290,11 +290,11 @@ class TestFieldMapping:
         
         # Get resampled data and write back to SQLite
         df = resample_raw_sensor_data(str(sample_sqlite_db), resample_interval='2s')
-        write_resampled_to_sqlite(df, str(sample_sqlite_db), output_table='resampled_data')
+        write_resampled_to_sqlite(df, str(sample_sqlite_db), output_table='underway_summary')
         
-        # Read from resampled_data table and verify fields
+        # Read from underway_summary table and verify fields
         conn = sqlite3.connect(sample_sqlite_db)
-        df_from_sqlite = pd.read_sql_query("SELECT * FROM resampled_data", conn)
+        df_from_sqlite = pd.read_sql_query("SELECT * FROM underway_summary", conn)
         conn.close()
 
         expected_columns = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph', 'temp_c', 'salinity_psu', 'ph_ma']
@@ -405,14 +405,14 @@ class TestDataIntegrity:
         file_writers.to_parquet(resampled_df, str(parquet_path))
         
         # Write back to SQLite
-        write_resampled_to_sqlite(resampled_df, str(sample_sqlite_db), output_table='resampled_data')
+        write_resampled_to_sqlite(resampled_df, str(sample_sqlite_db), output_table='underway_summary')
         
         # Read from all formats and compare
         csv_df = pd.read_csv(csv_path)
         parquet_df = pd.read_parquet(parquet_path)
         
         conn = sqlite3.connect(sample_sqlite_db)
-        sqlite_df = pd.read_sql_query("SELECT * FROM resampled_data", conn)
+        sqlite_df = pd.read_sql_query("SELECT * FROM underway_summary", conn)
         conn.close()
         
         # All should have same columns

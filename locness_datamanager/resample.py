@@ -52,7 +52,7 @@ def load_and_resample_sqlite(sqlite_path, resample_interval='2s'):
     df = fluoro_res.join([ph_res, tsg_res, gps_res], how='outer')
     df = df.reset_index()
     # Reorder columns
-    cols = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph', 'temp_c', 'salinity_psu']
+    cols = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_free', 'temp', 'salinity']
     df = df[cols]
     # Add moving average of pH
     config = get_config()
@@ -72,7 +72,7 @@ def add_ph_moving_average(df, window_seconds=120, freq_hz=1.0):
         df = df.sort_values('datetime_utc')
         df = df.reset_index(drop=True)
     window_size = max(1, int(window_seconds * freq_hz))
-    df['ph_ma'] = df['ph'].rolling(window=window_size, min_periods=1).mean()
+    df['ph_free_ma'] = df['ph_free'].rolling(window=window_size, min_periods=1).mean()
     return df
 
 def poll_new_records(

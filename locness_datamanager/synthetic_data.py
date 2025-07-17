@@ -256,8 +256,8 @@ def write_outputs(df,
     if write_sqlite:
         print(f"Writing to {sqlite_file} (SQLite table: {table_name}) ...")
         t_sqlite0 = time.perf_counter()
-        # If writing to resampled_data table, use special function with integer timestamps
-        if table_name == 'resampled_data':
+        # If writing to underway_summary table, use special function with integer timestamps
+        if table_name == 'underway_summary':
             write_to_resampled_data_table(df, sqlite_file)
         else:
             file_writers.to_sqlite(df, sqlite_file, table_name=table_name)
@@ -269,9 +269,9 @@ def write_outputs(df,
     for k, v in timings.items():
         print(f"  {k.capitalize()} write: {v:.4f} seconds")
 
-def write_to_resampled_data_table(df, sqlite_path):
+def write_to_underway_summary_table(df, sqlite_path):
     """
-    Write DataFrame to the resampled_data table with integer timestamps.
+    Write DataFrame to the underway_summary table with integer timestamps.
     
     Args:
         df: DataFrame with timestamp column and other sensor data
@@ -283,7 +283,7 @@ def write_to_resampled_data_table(df, sqlite_path):
     if pd.api.types.is_datetime64_any_dtype(df_copy['datetime_utc']):
         df_copy['datetime_utc'] = df_copy['datetime_utc'].astype('int64') // 10**9
     
-    # Ensure column order matches the resampled_data table
+    # Ensure column order matches the underway_summary table
     expected_columns = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph', 'temp_c', 'salinity_psu', 'ph_ma']
 
     # Only keep columns that exist in the DataFrame and are expected
@@ -294,10 +294,10 @@ def write_to_resampled_data_table(df, sqlite_path):
     try:
         # Create tables using the schema from CREATE_TABLES
         setup_sqlite_db(sqlite_path)
-        df_copy.to_sql('resampled_data', conn, if_exists='append', index=False)
-        print(f"Successfully wrote {len(df_copy)} records to resampled_data table")
+        df_copy.to_sql('underway_summary', conn, if_exists='append', index=False)
+        print(f"Successfully wrote {len(df_copy)} records to underway_summary table")
     except Exception as e:
-        print(f"Error writing to resampled_data table: {e}")
+        print(f"Error writing to underway_summary table: {e}")
     finally:
         conn.close()
 
@@ -511,9 +511,9 @@ def write_resampled_outputs(df, basepath, write_csv=False, write_parquet=False, 
 
     if write_sqlite:
         sqlite_file = f"{basepath}_resampled.sqlite"
-        print(f"Writing resampled data to {sqlite_file} (SQLite table: resampled_data)...")
+        print(f"Writing resampled data to {sqlite_file} (SQLite table: underway_summary)...")
         t_sqlite0 = time.perf_counter()
-        write_resampled_to_sqlite(df, sqlite_file)
+        write_resampled_to_sqlite(df, sqlite_file, table_name='underway_summary')
         t_sqlite1 = time.perf_counter()
         timings['sqlite'] = t_sqlite1 - t_sqlite0
 

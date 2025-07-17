@@ -65,17 +65,17 @@ CREATE TABLE IF NOT EXISTS underway_summary (
     latitude REAL,
     longitude REAL,
     rho_ppb REAL,
-    ph REAL,
-    temp_c REAL,
-    salinity_psu REAL,
-    ph_ma REAL
+    ph_free REAL,
+    temp REAL,
+    salinity REAL,
+    ph_free_ma REAL
 );
 
 CREATE INDEX IF NOT EXISTS idx_rhodamine_datetime_utc ON rhodamine(datetime_utc);
 CREATE INDEX IF NOT EXISTS idx_ph_datetime_utc ON ph(datetime_utc);
 CREATE INDEX IF NOT EXISTS idx_tsg_datetime_utc ON tsg(datetime_utc);
 CREATE INDEX IF NOT EXISTS idx_gps_datetime_utc ON gps(datetime_utc);
-CREATE INDEX IF NOT EXISTS idx_resampled_data_datetime_utc ON resampled_data(datetime_utc);
+CREATE INDEX IF NOT EXISTS idx_underway_summary_datetime_utc ON underway_summary(datetime_utc);
 PRAGMA journal_mode=WAL;
 """
     
