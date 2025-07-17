@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import sqlite3
@@ -29,7 +30,7 @@ def to_parquet(df, filename, append=False, partition_hours=None):
     
     if partition_hours is not None:
         # Add partition column based on timestamp
-        df['partition'] = df['timestamp'].dt.floor(f'{partition_hours}h')
+        df['partition'] = df['datetime_utc'].dt.floor(f'{partition_hours}h')
         table = pa.Table.from_pandas(df)
         
         if not append or not os.path.exists(filename):
@@ -65,28 +66,20 @@ def to_parquet(df, filename, append=False, partition_hours=None):
             combined_table = pa.concat_tables([existing_table, table])
             pq.write_table(combined_table, filename)
 
-def to_sqlite(df, db_path, table_name="sensor_data", create_table=True):
+def to_sqlite(df, db_path, table_name):
     """
     Write a DataFrame to a SQLite3 table.
     Args:
         df: pandas.DataFrame
         db_path: Path to SQLite database file
         table_name: Name of the table to write to
-        create_table: If True, create table if it does not exist
     """
-    import pandas as pd
-    
     df_copy = df.copy()
     
     # Convert datetime timestamps to Unix timestamps (integers) for SQLite compatibility
-    if 'timestamp' in df_copy.columns and pd.api.types.is_datetime64_any_dtype(df_copy['timestamp']):
-        df_copy['timestamp'] = df_copy['timestamp'].astype('int64') // 10**9
-    
+    if 'datetime_utc' in df_copy.columns and pd.api.types.is_datetime64_any_dtype(df_copy['datetime_utc']):
+        df_copy['datetime_utc'] = df_copy['datetime_utc'].astype('int64') // 10**9
+
     conn = sqlite3.connect(db_path)
-    if create_table:
-        # Use pandas to_sql with if_exists='append' and let pandas create table if needed
-        df_copy.to_sql(table_name, conn, if_exists='append', index=False)
-    else:
-        # Assume table exists, just append
-        df_copy.to_sql(table_name, conn, if_exists='append', index=False)
+    df_copy.to_sql(table_name, conn, if_exists='append', index=False)
     conn.close()
