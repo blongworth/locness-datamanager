@@ -1,13 +1,18 @@
 
-[defaults]
+[paths]
 cloud_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/"
 basename = "fake-data"
 db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
 #db_path: "C:/Users/CSL 2/Documents/LOCNESS_data/locness.db"
-summary_table = "underway_summary"
+
+[resampling]
 ph_ma_window = 120  # window in seconds for ph moving average
 ph_freq = 0.5  # frequency in Hz for ph moving average
+
+[output]
 partition_hours = 12  # hours to partition the data for writing, not used yet
+
+[synthetic_data]
 num = 30 # number of samples to generate
 freq = 0.5 # frequency in Hz for the generated data
 continuous = true # whether to generate continuous data or not

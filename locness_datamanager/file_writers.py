@@ -1,5 +1,4 @@
 import os
-import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 import sqlite3
@@ -65,36 +64,6 @@ def to_parquet(df, filename, append=False, partition_hours=None):
             existing_table = pq.read_table(filename)
             combined_table = pa.concat_tables([existing_table, table])
             pq.write_table(combined_table, filename)
-
-def to_duckdb(df, db_path, table_name="sensor_data", create_table=True):
-    """
-    Write a DataFrame to a DuckDB table.
-    Args:
-        df: pandas.DataFrame
-        db_path: Path to DuckDB database file
-        table_name: Name of the table to write to
-        create_table: If True, create table if it does not exist
-    """
-    con = duckdb.connect(db_path)
-    if create_table:
-        con.execute(f'''
-            CREATE TABLE IF NOT EXISTS {table_name} (
-                timestamp TIMESTAMP,
-                lat DOUBLE,
-                lon DOUBLE,
-                temp DOUBLE,
-                salinity DOUBLE,
-                rhodamine DOUBLE,
-                ph DOUBLE,
-                ph_ma DOUBLE
-            )
-        ''')
-    sample_data = [tuple(row) for row in df.itertuples(index=False, name=None)]
-    con.executemany(f'''
-        INSERT INTO {table_name} (timestamp, lat, lon, temp, salinity, rhodamine, ph, ph_ma)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', sample_data)
-    con.close()
 
 def to_sqlite(df, db_path, table_name="sensor_data", create_table=True):
     """

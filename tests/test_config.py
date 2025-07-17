@@ -20,13 +20,11 @@ class TestConfig:
                          'basename',
                          'num',
                          'freq',
-                         'table',
                          'continuous',
                          'ph_ma_window',
                          'ph_freq',
                          'partition_hours',
-                         'db_path',
-                         'summary_table']
+                         'db_path']
 
         for key in expected_keys:
             assert key in config, f"Expected key '{key}' not found in config"

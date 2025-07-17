@@ -9,6 +9,7 @@ from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
 from locness_datamanager.resample import add_ph_moving_average, load_and_resample_sqlite, write_resampled_to_sqlite
 import sqlite3
+from locness_datamanager.setup_db import setup_sqlite_db
 
 # Functions for generating synthetic data for fluorometer, ph, and tsg tables
 
@@ -52,12 +53,10 @@ def generate_fluorometer_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_
         gain = np.random.choice([1, 10, 100])
         
         record = {
-            "timestamp": int((current_time + timedelta(seconds=i * delta_seconds)).timestamp()),
-            "latitude": lat,
-            "longitude": lon,
+            "datetime_utc": int((current_time + timedelta(seconds=i * delta_seconds)).timestamp()),
             "gain": gain,
             "voltage": voltage,
-            "concentration": concentration,
+            "rho_ppb": concentration,
         }
         data.append(record)
     
@@ -83,14 +82,14 @@ def generate_ph_data(n_records=1, start_time=None, frequency_hz=0.1):
     
     for i in range(n_records):
         timestamp = current_time + timedelta(seconds=i * delta_seconds)
+        pc_timestamp = int(timestamp.timestamp())
         ph_timestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
-        pc_timestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')
         
         # Generate realistic pH sensor readings
         base_ph = 8.1 + 0.2 * np.sin(i * 0.05) + np.random.normal(0, 0.05)
         
         record = {
-            "pc_timestamp": pc_timestamp,
+            "datetime_utc": pc_timestamp,
             "samp_num": i + 1,
             "ph_timestamp": ph_timestamp,
             "v_bat": 12.0 + np.random.normal(0, 0.5),  # Battery voltage ~12V
@@ -159,6 +158,7 @@ def generate_tsg_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=Non
             "scan_no": i + 1,
             "cond": max(0, cond),  # Conductivity (S/m)
             "temp": temp,  # Temperature (°C)
+            "salinity": salinity,  # Salinity (PSU)
             "hull_temp": hull_temp,  # Hull temperature (°C)
             "time_elapsed": i * delta_seconds,  # Elapsed time in seconds
             "nmea_time": int(timestamp_dt.timestamp()),  # NMEA timestamp
@@ -210,11 +210,11 @@ def generate(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, freque
 def parse_args():
     """Parse command-line arguments."""
     config = get_config()
-    parser = argparse.ArgumentParser(description="Generate synthetic oceanographic data and write to CSV, Parquet, DuckDB, and SQLite.")
+    parser = argparse.ArgumentParser(description="Generate synthetic oceanographic data and write to CSV, Parquet, and SQLite.")
     parser.add_argument('--path', type=str, default=config['cloud_path'], help='Directory to write output files (default: current directory)')
     parser.add_argument('--basename', type=str, default=config['basename'], help='Base name for output files (no extension)')
     parser.add_argument('--time', type=float, default=60.0, help='Duration of data to generate in seconds (default: 60)')
-    parser.add_argument('--table', type=str, default=config['table'], help='DuckDB/SQLite table name (default: sensor_data)')
+    parser.add_argument('--table', type=str, default='underway_summary', help='SQLite table name (default: underway_summary)')
     parser.add_argument('--continuous', action='store_true', default=config['continuous'], help='Continuously generate and write data every "time" seconds')
     parser.add_argument('--csv', action='store_true', help='Write CSV output for resampled data')
     parser.add_argument('--parquet', action='store_true', help='Write Parquet output for resampled data')
@@ -230,13 +230,11 @@ def write_outputs(df,
                   table_name,
                   write_csv=True,
                   write_parquet=True,
-                  write_duckdb=True,
                   write_sqlite=True):
     """Write DataFrame to selected outputs, timing each step."""
     timings = {}
     csv_file = f"{basepath}.csv"
     parquet_file = f"{basepath}.parquet"
-    db_file = f"{basepath}.duckdb"
     sqlite_file = f"{basepath}.sqlite"
 
     if write_csv:
@@ -249,19 +247,11 @@ def write_outputs(df,
     if write_parquet:
         print(f"Writing to {parquet_file} (Parquet)...")
         t_parquet0 = time.perf_counter()
-        # Use default partition_hours if not set
         config = get_config()
         partition_hours = config.get('partition_hours', None)
         file_writers.to_parquet(df, parquet_file, append=True, partition_hours=partition_hours)
         t_parquet1 = time.perf_counter()
         timings['parquet'] = t_parquet1 - t_parquet0
-
-    if write_duckdb:
-        print(f"Writing to {db_file} (DuckDB table: {table_name}) ...")
-        t_db0 = time.perf_counter()
-        file_writers.to_duckdb(df, db_file, table_name=table_name)
-        t_db1 = time.perf_counter()
-        timings['duckdb'] = t_db1 - t_db0
 
     if write_sqlite:
         print(f"Writing to {sqlite_file} (SQLite table: {table_name}) ...")
@@ -338,6 +328,9 @@ def write_to_raw_tables(fluorometer_df=None, ph_df=None, tsg_df=None, sqlite_pat
     conn = sqlite3.connect(sqlite_path)
     
     try:
+        # Create tables using the schema from CREATE_TABLES
+        setup_sqlite_db(sqlite_path)
+        
         if fluorometer_df is not None and not fluorometer_df.empty:
             fluorometer_df.to_sql('fluorometer', conn, if_exists='append', index=False)
             print(f"Successfully wrote {len(fluorometer_df)} records to fluorometer table")

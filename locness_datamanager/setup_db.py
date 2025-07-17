@@ -2,7 +2,7 @@
 import sys
 import sqlite3
 import os
-from config import get_config
+from locness_datamanager.config import get_config
 
 CREATE_TABLES = """
 CREATE TABLE IF NOT EXISTS rhodamine (
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS ph (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     datetime_utc INTEGER NOT NULL,
     samp_num INTEGER,
-    ph_timestamp INTEGER, 
+    ph_timestamp TEXT, 
     v_bat REAL,
     v_bias_pos REAL,
     v_bias_neg REAL, 
@@ -76,6 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_ph_datetime_utc ON ph(datetime_utc);
 CREATE INDEX IF NOT EXISTS idx_tsg_datetime_utc ON tsg(datetime_utc);
 CREATE INDEX IF NOT EXISTS idx_gps_datetime_utc ON gps(datetime_utc);
 CREATE INDEX IF NOT EXISTS idx_resampled_data_datetime_utc ON resampled_data(datetime_utc);
+PRAGMA journal_mode=WAL;
 """
     
 def setup_sqlite_db(db_path):
@@ -87,7 +88,6 @@ def setup_sqlite_db(db_path):
     conn = sqlite3.connect(db_path)
     # Enable WAL mode for concurrency
     conn.executescript(CREATE_TABLES)
-    conn.execute('PRAGMA journal_mode=WAL;')
     print(f"SQLite database initialized at {db_path} (WAL mode enabled)")
     conn.close()
 
