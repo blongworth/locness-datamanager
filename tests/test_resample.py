@@ -122,3 +122,35 @@ class TestResampleMissingData:
         assert set(df.columns) == {'datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity'}
         assert df['latitude'].isna().all()
         assert df['rho_ppb'].notna().any()
+
+def test_resample_tables_mean_correctness():
+    import pandas as pd
+    from locness_datamanager import resample
+    # Create data with two points per 2s interval, resample to 4s
+    dt = pd.date_range('2023-01-01', periods=4, freq='2s')
+    # fluoro: 0,1,2,3 at 0s,2s,4s,6s
+    fluoro = pd.DataFrame({'datetime_utc': dt, 'rho_ppb': [0, 1, 2, 3]})
+    # ph: 10,20,30,40 at 0s,2s,4s,6s
+    ph = pd.DataFrame({'datetime_utc': dt, 'ph_total': [10, 20, 30, 40]})
+    # tsg: temp 100,200,300,400; salinity 1,2,3,4
+    tsg = pd.DataFrame({'datetime_utc': dt, 'temp': [100, 200, 300, 400], 'salinity': [1, 2, 3, 4]})
+    # gps: lat 50,51,52,53; lon -1,-2,-3,-4
+    gps = pd.DataFrame({'datetime_utc': dt, 'latitude': [50, 51, 52, 53], 'longitude': [-1, -2, -3, -4]})
+    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='4s')
+    # There should be two intervals: 0s-4s, 4s-8s
+    # For each, mean of two points
+    assert len(df) == 2
+    # First interval: mean([0,1])=0.5, mean([10,20])=15, mean([100,200])=150, mean([1,2])=1.5, mean([50,51])=50.5, mean([-1,-2])=-1.5
+    assert df['rho_ppb'].iloc[0] == pytest.approx(0.5)
+    assert df['ph_total'].iloc[0] == pytest.approx(15)
+    assert df['temp'].iloc[0] == pytest.approx(150)
+    assert df['salinity'].iloc[0] == pytest.approx(1.5)
+    assert df['latitude'].iloc[0] == pytest.approx(50.5)
+    assert df['longitude'].iloc[0] == pytest.approx(-1.5)
+    # Second interval: mean([2,3])=2.5, mean([30,40])=35, mean([300,400])=350, mean([3,4])=3.5, mean([52,53])=52.5, mean([-3,-4])=-3.5
+    assert df['rho_ppb'].iloc[1] == pytest.approx(2.5)
+    assert df['ph_total'].iloc[1] == pytest.approx(35)
+    assert df['temp'].iloc[1] == pytest.approx(350)
+    assert df['salinity'].iloc[1] == pytest.approx(3.5)
+    assert df['latitude'].iloc[1] == pytest.approx(52.5)
+    assert df['longitude'].iloc[1] == pytest.approx(-3.5)

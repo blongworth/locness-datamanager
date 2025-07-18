@@ -60,7 +60,8 @@ def resample_tables(fluoro, ph, tsg, gps, resample_interval=None, config=None):
             if df['datetime_utc'].duplicated().any():
                 warnings.warn(f"Duplicate timestamps found in {name} table. Dropping duplicates.")
             df = df.drop_duplicates(subset='datetime_utc').set_index('datetime_utc')
-            resampled[name] = df.resample(resample_interval).nearest()
+            # Use mean for resampling instead of nearest
+            resampled[name] = df.resample(resample_interval).mean(numeric_only=True)
         else:
             # Create empty DataFrame with datetime_utc index (no rows)
             resampled[name] = pd.DataFrame(columns=cols).set_index('datetime_utc')
