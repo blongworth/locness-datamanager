@@ -63,3 +63,62 @@ def test_load_and_resample_sqlite_integration():
         df = resample.load_and_resample_sqlite('dummy_path', resample_interval='2s')
         assert 'ph_total_ma' in df.columns
         assert len(df) == 2
+
+class TestResampleMissingData:
+    @staticmethod
+    def make_df(columns, data=None):
+        import pandas as pd
+        if data is None:
+            return pd.DataFrame(columns=columns)
+        return pd.DataFrame(data, columns=columns)
+
+    def test_resample_all_tables_present(self):
+        fluoro = self.make_df(['datetime_utc', 'rho_ppb'], [[1, 10], [2, 20]])
+        ph = self.make_df(['datetime_utc', 'ph_total'], [[1, 7.5], [2, 7.6]])
+        tsg = self.make_df(['datetime_utc', 'temp', 'salinity'], [[1, 10, 35], [2, 11, 36]])
+        gps = self.make_df(['datetime_utc', 'latitude', 'longitude'], [[1, 50, -1], [2, 51, -2]])
+        df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='1s', config={'res_int': '1s'})
+        assert set(df.columns) == {'datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity'}
+        assert len(df) > 0
+
+    def test_resample_missing_fluoro(self):
+        fluoro = self.make_df(['datetime_utc', 'rho_ppb'])
+        ph = self.make_df(['datetime_utc', 'ph_total'], [[1, 7.5], [2, 7.6]])
+        tsg = self.make_df(['datetime_utc', 'temp', 'salinity'], [[1, 10, 35], [2, 11, 36]])
+        gps = self.make_df(['datetime_utc', 'latitude', 'longitude'], [[1, 50, -1], [2, 51, -2]])
+        df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='1s', config={'res_int': '1s'})
+        assert set(df.columns) == {'datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity'}
+        assert df['rho_ppb'].isna().all()
+        assert not df['latitude'].isna().all()
+
+    def test_resample_only_gps(self):
+        fluoro = self.make_df(['datetime_utc', 'rho_ppb'])
+        ph = self.make_df(['datetime_utc', 'ph_total'])
+        tsg = self.make_df(['datetime_utc', 'temp', 'salinity'])
+        gps = self.make_df(['datetime_utc', 'latitude', 'longitude'], [[1, 50, -1], [2, 51, -2]])
+        df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='1s', config={'res_int': '1s'})
+        assert set(df.columns) == {'datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity'}
+        assert df['latitude'].notna().any()
+        assert df['rho_ppb'].isna().all()
+        assert df['ph_total'].isna().all()
+        assert df['temp'].isna().all()
+        assert df['salinity'].isna().all()
+
+    def test_resample_all_missing(self):
+        fluoro = self.make_df(['datetime_utc', 'rho_ppb'])
+        ph = self.make_df(['datetime_utc', 'ph_total'])
+        tsg = self.make_df(['datetime_utc', 'temp', 'salinity'])
+        gps = self.make_df(['datetime_utc', 'latitude', 'longitude'])
+        df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='1s', config={'res_int': '1s'})
+        assert set(df.columns) == {'datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity'}
+        assert df.empty or df.isna().all().all()
+
+    def test_resample_missing_gps(self):
+        fluoro = self.make_df(['datetime_utc', 'rho_ppb'], [[1, 10], [2, 20]])
+        ph = self.make_df(['datetime_utc', 'ph_total'], [[1, 7.5], [2, 7.6]])
+        tsg = self.make_df(['datetime_utc', 'temp', 'salinity'], [[1, 10, 35], [2, 11, 36]])
+        gps = self.make_df(['datetime_utc', 'latitude', 'longitude'])
+        df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='1s', config={'res_int': '1s'})
+        assert set(df.columns) == {'datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity'}
+        assert df['latitude'].isna().all()
+        assert df['rho_ppb'].notna().any()

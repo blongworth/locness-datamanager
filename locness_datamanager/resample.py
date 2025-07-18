@@ -37,36 +37,48 @@ def resample_tables(fluoro, ph, tsg, gps, resample_interval=None, config=None):
     """
     Resample each table to the given interval and join into a single DataFrame.
     If resample_interval is None, get it from config['res_int'].
+    Handles missing/empty tables by producing a DataFrame with all expected columns, filled with NA where data is missing.
     """
     if config is None:
         config = get_config()
     if resample_interval is None:
         resample_interval = config.get('res_int', '2s')
     # Set datetime_utc as index and ensure datetime
-    for name, df in zip(['rhodamine', 'ph', 'tsg', 'gps'], [fluoro, ph, tsg, gps]):
-        if 'datetime_utc' not in df.columns:
-            warnings.warn(f"Table '{name}' missing 'datetime_utc' column or is empty. Skipping.")
-            df_empty = pd.DataFrame()
-            if name == 'rhodamine': fluoro = df_empty
-            elif name == 'ph': ph = df_empty
-            elif name == 'tsg': tsg = df_empty
-            elif name == 'gps': gps = df_empty
-            continue
-        df['datetime_utc'] = pd.to_datetime(df['datetime_utc'])
-        if df['datetime_utc'].duplicated().any():
-            warnings.warn(f"Duplicate timestamps found in {name} table. Dropping duplicates.")
-        df = df.drop_duplicates(subset='datetime_utc').set_index('datetime_utc')
-        if name == 'rhodamine': fluoro = df
-        elif name == 'ph': ph = df
-        elif name == 'tsg': tsg = df
-        elif name == 'gps': gps = df
-    # Resample
-    fluoro_res = fluoro.resample(resample_interval).nearest()
-    ph_res = ph.resample(resample_interval).nearest()
-    tsg_res = tsg.resample(resample_interval).nearest()
-    gps_res = gps.resample(resample_interval).nearest()
+    table_defs = [
+        ('rhodamine', fluoro, ['datetime_utc', 'rho_ppb']),
+        ('ph', ph, ['datetime_utc', 'ph_total']),
+        ('tsg', tsg, ['datetime_utc', 'temp', 'salinity']),
+        ('gps', gps, ['datetime_utc', 'latitude', 'longitude'])
+    ]
+    resampled = {}
+    for name, df, cols in table_defs:
+        # If df is empty or missing datetime_utc, create empty DataFrame with correct columns
+        if df is None or df.empty or 'datetime_utc' not in df.columns:
+            df = pd.DataFrame(columns=cols)
+        if not df.empty:
+            df['datetime_utc'] = pd.to_datetime(df['datetime_utc'])
+            if df['datetime_utc'].duplicated().any():
+                warnings.warn(f"Duplicate timestamps found in {name} table. Dropping duplicates.")
+            df = df.drop_duplicates(subset='datetime_utc').set_index('datetime_utc')
+            resampled[name] = df.resample(resample_interval).nearest()
+        else:
+            # Create empty DataFrame with datetime_utc index (no rows)
+            resampled[name] = pd.DataFrame(columns=cols).set_index('datetime_utc')
+    # Find the union of all datetime_utc indices
+    all_indices = pd.Index([])
+    for df in resampled.values():
+        all_indices = all_indices.union(df.index)
+    all_indices = all_indices.sort_values()
+    # Reindex all DataFrames to the union index
+    for name in resampled:
+        resampled[name] = resampled[name].reindex(all_indices)
     # Combine all on datetime_utc
-    df = fluoro_res.join([ph_res, tsg_res, gps_res], how='outer')
+    df = pd.concat([
+        resampled['rhodamine'],
+        resampled['ph'],
+        resampled['tsg'],
+        resampled['gps']
+    ], axis=1)
     df = df.reset_index()
     # Ensure all expected columns exist
     cols = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity']
