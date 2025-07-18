@@ -27,6 +27,7 @@ def get_config():
     config['cloud_path'] = os.environ.get('LOCNESS_CLOUD_PATH', config.get('cloud_path', '.'))
     config['basename'] = os.environ.get('LOCNESS_BASENAME', config.get('basename', 'synthetic_oceanographic_data'))
     config['db_path'] = os.environ.get('LOCNESS_DB_PATH', config.get('db_path', 'locness.db'))
+    config['res_freq'] = os.environ.get('LOCNESS_RES_FREQ', config.get('res_freq', 0.5))
     config['ph_ma_window'] = int(os.environ.get('LOCNESS_PH_MA_WINDOW', config.get('ph_ma_window', 120)))
     config['ph_freq'] = float(os.environ.get('LOCNESS_PH_FREQ', config.get('ph_freq', 0.5)))
     config['partition_hours'] = float(os.environ.get('LOCNESS_PARTITION_HOURS', config.get('partition_hours', 12)))

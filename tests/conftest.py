@@ -26,78 +26,13 @@ def sample_csv_file(temp_dir):
 
 @pytest.fixture
 def sample_sqlite_db(temp_dir):
-    """Create a sample SQLite database for testing."""
+    """Create a sample SQLite database for testing with real schema."""
     import sqlite3
     db_file = temp_dir / "sample.sqlite"
-    
+
+    from locness_datamanager.setup_db import CREATE_TABLES_TEMPLATE
     conn = sqlite3.connect(db_file)
-    cursor = conn.cursor()
-    
-    # Create sample tables
-    cursor.execute("""
-        CREATE TABLE underway_summary (
-            datetime_utc INTEGER,
-            lat REAL,
-            lon REAL,
-            rhodamine REAL,
-            ph REAL,
-            temp REAL,
-            salinity REAL,
-            ph_ma REAL
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE rhodamine (
-            datetime_utc INTEGER,
-            latitude REAL,
-            longitude REAL,
-            gain INTEGER,
-            voltage REAL,
-            concentration REAL
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE tsg (
-            datetime_utc INTEGER,
-            scan_no INTEGER,
-            cond REAL,
-            temp REAL,
-            hull_temp REAL,
-            time_elapsed REAL,
-            nmea_time INTEGER,
-            latitude REAL,
-            longitude REAL
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE ph (
-            datetime_utc TEXT,
-            samp_num INTEGER,
-            ph_timestamp TEXT,
-            v_bat REAL,
-            v_bias_pos REAL,
-            v_bias_neg REAL,
-            t_board REAL,
-            h_board REAL,
-            vrse REAL,
-            vrse_std REAL,
-            cevk REAL,
-            cevk_std REAL,
-            ce_ik REAL,
-            i_sub REAL,
-            cal_temp REAL,
-            cal_sal REAL,
-            k0 REAL,
-            k2 REAL,
-            ph_free REAL,
-            ph_total REAL
-        )
-    """)
-    
+    conn.executescript(CREATE_TABLES_TEMPLATE)
     conn.commit()
     conn.close()
-    
     return db_file

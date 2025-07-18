@@ -27,16 +27,21 @@ def load_sqlite_tables(sqlite_path):
     """
     conn = sqlite3.connect(sqlite_path)
     fluoro = read_table(conn, 'rhodamine', ['datetime_utc','rho_ppb'])
-    ph = read_table(conn, 'ph', ['datetime_utc', 'ph_free'])
+    ph = read_table(conn, 'ph', ['datetime_utc', 'ph_total'])
     tsg = read_table(conn, 'tsg', ['datetime_utc', 'temp', 'salinity'])
     gps = read_table(conn, 'gps', ['datetime_utc', 'latitude', 'longitude'])
     conn.close()
     return fluoro, ph, tsg, gps
 
-def resample_tables(fluoro, ph, tsg, gps, resample_interval='2s'):
+def resample_tables(fluoro, ph, tsg, gps, resample_interval=None, config=None):
     """
     Resample each table to the given interval and join into a single DataFrame.
+    If resample_interval is None, get it from config['res_int'].
     """
+    if config is None:
+        config = get_config()
+    if resample_interval is None:
+        resample_interval = config.get('res_int', '2s')
     # Set datetime_utc as index and ensure datetime
     for name, df in zip(['rhodamine', 'ph', 'tsg', 'gps'], [fluoro, ph, tsg, gps]):
         if 'datetime_utc' not in df.columns:
@@ -64,7 +69,7 @@ def resample_tables(fluoro, ph, tsg, gps, resample_interval='2s'):
     df = fluoro_res.join([ph_res, tsg_res, gps_res], how='outer')
     df = df.reset_index()
     # Ensure all expected columns exist
-    cols = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_free', 'temp', 'salinity']
+    cols = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity']
     for col in cols:
         if col not in df.columns:
             df[col] = pd.NA
@@ -82,7 +87,7 @@ def add_ph_moving_average(df, window_seconds=120, freq_hz=1.0):
         df = df.sort_values('datetime_utc')
         df = df.reset_index(drop=True)
     window_size = max(1, int(window_seconds * freq_hz))
-    df['ph_free_ma'] = df['ph_free'].rolling(window=window_size, min_periods=1).mean()
+    df['ph_total_ma'] = df['ph_total'].rolling(window=window_size, min_periods=1).mean()
     return df
 
 def add_computed_fields(df, config=None):
@@ -96,14 +101,15 @@ def add_computed_fields(df, config=None):
     df = add_ph_moving_average(df, window_seconds=window_seconds, freq_hz=freq_hz)
     return df
 
-def load_and_resample_sqlite(sqlite_path, resample_interval='2s'):
+def load_and_resample_sqlite(sqlite_path, resample_interval=None):
     """
     Load, resample, and add computed fields to sensor data from SQLite.
     Returns a DataFrame with columns: datetime_utc, latitude, longitude, rho_ppb, ph, temp_c, salinity_psu, ph_ma
     """
+    config = get_config()
     fluoro, ph, tsg, gps = load_sqlite_tables(sqlite_path)
-    df = resample_tables(fluoro, ph, tsg, gps, resample_interval)
-    df = add_computed_fields(df)
+    df = resample_tables(fluoro, ph, tsg, gps, resample_interval, config)
+    df = add_computed_fields(df, config)
     return df
 
 def poll_new_records(
