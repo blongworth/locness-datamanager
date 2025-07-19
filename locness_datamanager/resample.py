@@ -1,11 +1,13 @@
-from locness_datamanager.config import get_config
 import sqlite3
 import pandas as pd
 import time
 from typing import Optional
 import os
-from locness_datamanager import file_writers
 import warnings
+from locness_datamanager.config import get_config
+from locness_datamanager import file_writers
+from isfetphcalc import calc_ph
+
 
 # TODO: correct field names to match database schema
 # TODO: add error handling for database connection and queries
@@ -27,7 +29,7 @@ def load_sqlite_tables(sqlite_path):
     """
     conn = sqlite3.connect(sqlite_path)
     fluoro = read_table(conn, 'rhodamine', ['datetime_utc','rho_ppb'])
-    ph = read_table(conn, 'ph', ['datetime_utc', 'ph_total'])
+    ph = read_table(conn, 'ph', ['datetime_utc', 'vrse', 'ph_total'])
     tsg = read_table(conn, 'tsg', ['datetime_utc', 'temp', 'salinity'])
     gps = read_table(conn, 'gps', ['datetime_utc', 'latitude', 'longitude'])
     conn.close()
@@ -69,11 +71,25 @@ def resample_tables(fluoro, ph, tsg, gps, resample_interval=None, config=None):
     df = fluoro_res.join([ph_res, tsg_res, gps_res], how='outer')
     df = df.reset_index()
     # Ensure all expected columns exist
-    cols = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity']
+    cols = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'vrse', 'temp', 'salinity']
     for col in cols:
         if col not in df.columns:
             df[col] = pd.NA
     df = df[cols]
+    return df
+
+def add_corrected_ph(df):
+    """
+    Add a corrected pH column to the DataFrame.
+    """
+    ph_free, ph_total= calc_ph(Vrs=df['vrse'],
+                                 Press=0,
+                                 Temp=df['temp'],
+                                 Salt=df['salinity'],
+                                 k0= 0.0,
+                                 k2= 0.0,
+                                 Pcoefs=0)
+    df['ph_corrected'] = ph_total
     return df
 
 def add_ph_moving_average(df, window_seconds=120, freq_hz=1.0):
@@ -87,7 +103,7 @@ def add_ph_moving_average(df, window_seconds=120, freq_hz=1.0):
         df = df.sort_values('datetime_utc')
         df = df.reset_index(drop=True)
     window_size = max(1, int(window_seconds * freq_hz))
-    df['ph_total_ma'] = df['ph_total'].rolling(window=window_size, min_periods=1).mean()
+    df['ph_corrected_ma'] = df['ph_corrected'].rolling(window=window_size, min_periods=1).mean()
     return df
 
 def add_computed_fields(df, config=None):
@@ -98,6 +114,7 @@ def add_computed_fields(df, config=None):
         config = get_config()
     window_seconds = config.get('ph_ma_window', 120)
     freq_hz = config.get('ph_freq', 0.5)
+    df = add_corrected_ph(df)
     df = add_ph_moving_average(df, window_seconds=window_seconds, freq_hz=freq_hz)
     return df
 
