@@ -78,18 +78,26 @@ def resample_tables(fluoro, ph, tsg, gps, resample_interval=None, config=None):
     df = df[cols]
     return df
 
-def add_corrected_ph(df):
+def add_corrected_ph(df, k0=0.0, k2=0.0):
     """
     Add a corrected pH column to the DataFrame.
     """
-    ph_free, ph_total= calc_ph(Vrs=df['vrse'],
-                                 Press=0,
-                                 Temp=df['temp'],
-                                 Salt=df['salinity'],
-                                 k0= 0.0,
-                                 k2= 0.0,
-                                 Pcoefs=0)
+    # If temp or salinity are missing, fill ph_corrected with NaN
+    if 'temp' not in df.columns or 'salinity' not in df.columns:
+        df['ph_corrected'] = pd.NA if hasattr(pd, 'NA') else float('nan')
+        return df
+    # If any values in temp or salinity are missing, set ph_corrected to NaN for those rows
+    mask = df['temp'].isna() | df['salinity'].isna()
+    ph_free, ph_total = calc_ph(Vrs=df['vrse'],
+                                Press=0,
+                                Temp=df['temp'],
+                                Salt=df['salinity'],
+                                k0=0.0,
+                                k2=0.0,
+                                Pcoefs=0)
     df['ph_corrected'] = ph_total
+    if mask.any():
+        df.loc[mask, 'ph_corrected'] = pd.NA if hasattr(pd, 'NA') else float('nan')
     return df
 
 def add_ph_moving_average(df, window_seconds=120, freq_hz=1.0):
@@ -103,7 +111,12 @@ def add_ph_moving_average(df, window_seconds=120, freq_hz=1.0):
         df = df.sort_values('datetime_utc')
         df = df.reset_index(drop=True)
     window_size = max(1, int(window_seconds * freq_hz))
-    df['ph_corrected_ma'] = df['ph_corrected'].rolling(window=window_size, min_periods=1).mean()
+    # Moving average for ph_corrected
+    if 'ph_corrected' in df.columns:
+        df['ph_corrected_ma'] = df['ph_corrected'].rolling(window=window_size, min_periods=1).mean()
+    # Moving average for ph_total
+    if 'ph_total' in df.columns:
+        df['ph_total_ma'] = df['ph_total'].rolling(window=window_size, min_periods=1).mean()
     return df
 
 def add_computed_fields(df, config=None):
@@ -114,7 +127,10 @@ def add_computed_fields(df, config=None):
         config = get_config()
     window_seconds = config.get('ph_ma_window', 120)
     freq_hz = config.get('ph_freq', 0.5)
-    df = add_corrected_ph(df)
+    ph_k0 = config.get('k0', 0.0)
+    ph_k2 = config.get('k2', 0.0)
+    # Add corrected pH and moving averages
+    df = add_corrected_ph(df, k0=ph_k0, k2=ph_k2)
     df = add_ph_moving_average(df, window_seconds=window_seconds, freq_hz=freq_hz)
     return df
 

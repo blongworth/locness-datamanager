@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS underway_summary (
     ph_corrected REAL,
     temp REAL,
     salinity REAL,
-    ph_corrected_ma REAL
+    ph_corrected_ma REAL,
+    ph_total_ma REAL
 );
 
 CREATE INDEX IF NOT EXISTS idx_rhodamine_datetime_utc ON rhodamine(datetime_utc);

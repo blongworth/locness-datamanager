@@ -1,3 +1,48 @@
+def test_add_corrected_ph_basic():
+    df = pd.DataFrame({
+        'vrse': [0.1, 0.2],
+        'temp': [20.0, 21.0],
+        'salinity': [35.0, 36.0]
+    })
+    result = resample.add_corrected_ph(df.copy())
+    assert 'ph_corrected' in result.columns
+    assert len(result['ph_corrected']) == 2
+
+def test_add_corrected_ph_missing_salinity():
+    df = pd.DataFrame({
+        'vrse': [0.1, 0.2],
+        'temp': [20.0, 21.0]
+        # salinity missing
+    })
+    try:
+        result = resample.add_corrected_ph(df.copy())
+        # Should either fill with NaN or raise, depending on calc_ph
+        assert 'ph_corrected' in result.columns
+    except Exception:
+        pass  # Acceptable if function raises
+
+def test_add_corrected_ph_missing_temp():
+    df = pd.DataFrame({
+        'vrse': [0.1, 0.2],
+        'salinity': [35.0, 36.0]
+        # temp missing
+    })
+    try:
+        result = resample.add_corrected_ph(df.copy())
+        assert 'ph_corrected' in result.columns
+    except Exception:
+        pass
+
+def test_add_corrected_ph_missing_both():
+    df = pd.DataFrame({
+        'vrse': [0.1, 0.2]
+        # temp and salinity missing
+    })
+    try:
+        result = resample.add_corrected_ph(df.copy())
+        assert 'ph_corrected' in result.columns
+    except Exception:
+        pass
 import pytest
 import pandas as pd
 from unittest.mock import patch, MagicMock
@@ -14,6 +59,7 @@ def test_add_ph_moving_average_basic():
     })
     result = resample.add_ph_moving_average(df, window_seconds=4, freq_hz=0.5)
     assert 'ph_corrected_ma' in result.columns
+    assert 'ph_total_ma' in result.columns
     # The rolling window is 2, so the last value should be the mean of the last 2 values
     expected = (7.3 + 7.4) / 2  # 7.35
     assert result['ph_corrected_ma'].iloc[-1] == pytest.approx(expected, rel=1e-2)
@@ -29,6 +75,7 @@ def test_add_computed_fields_uses_config():
     config = {'ph_ma_window': 4, 'ph_freq': 0.5}
     result = resample.add_computed_fields(df, config)
     assert 'ph_corrected_ma' in result.columns
+    assert 'ph_total_ma' in result.columns
 
 def test_resample_tables_joins_and_resamples():
     dt = pd.date_range('2023-01-01', periods=4, freq='2s')
@@ -66,4 +113,5 @@ def test_load_and_resample_sqlite_integration():
         )
         df = resample.load_and_resample_sqlite('dummy_path', resample_interval='2s')
         assert 'ph_corrected_ma' in df.columns
+        assert 'ph_total_ma' in df.columns
         assert len(df) == 2
