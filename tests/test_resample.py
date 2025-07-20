@@ -1,3 +1,12 @@
+import pytest
+import pandas as pd
+import numpy as np
+from unittest.mock import patch, MagicMock
+from locness_datamanager import resample
+
+def make_df(data, columns):
+    return pd.DataFrame(data, columns=columns)
+
 def test_add_corrected_ph_basic():
     df = pd.DataFrame({
         'vrse': [0.1, 0.2],
@@ -43,13 +52,6 @@ def test_add_corrected_ph_missing_both():
         assert 'ph_corrected' in result.columns
     except Exception:
         pass
-import pytest
-import pandas as pd
-from unittest.mock import patch, MagicMock
-from locness_datamanager import resample
-
-def make_df(data, columns):
-    return pd.DataFrame(data, columns=columns)
 
 def test_add_ph_moving_average_basic():
     df = pd.DataFrame({
@@ -115,3 +117,67 @@ def test_load_and_resample_sqlite_integration():
         assert 'ph_corrected_ma' in df.columns
         assert 'ph_total_ma' in df.columns
         assert len(df) == 2
+
+# --- Additional edge case tests for resample.py ---
+
+def test_resample_tables_with_missing_values():
+    dt = pd.date_range('2023-01-01', periods=4, freq='2s')
+    fluoro = make_df({'datetime_utc': dt, 'rho_ppb': [1, np.nan, 3, 4]}, ['datetime_utc','rho_ppb'])
+    ph = make_df({'datetime_utc': dt, 'ph_total': [7, 8, np.nan, 10]}, ['datetime_utc','ph_total'])
+    tsg = make_df({'datetime_utc': dt, 'temp': [20, 21, 22, np.nan], 'salinity': [35, 36, np.nan, 38]}, ['datetime_utc','temp','salinity'])
+    gps = make_df({'datetime_utc': dt, 'latitude': [10, 11, 12, 13], 'longitude': [20, 21, 22, 23]}, ['datetime_utc','latitude','longitude'])
+    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    assert len(df) == 4
+    # Should not raise, and columns should exist
+    assert 'rho_ppb' in df.columns and 'ph_total' in df.columns
+
+def test_resample_tables_with_duplicate_timestamps():
+    dt = pd.to_datetime(['2023-01-01 00:00:02', '2023-01-01 00:00:02', '2023-01-01 00:00:02', '2023-01-01 00:00:02'])
+    fluoro = make_df({'datetime_utc': dt, 'rho_ppb': [1, 2, 2, 4]}, ['datetime_utc','rho_ppb'])
+    ph = make_df({'datetime_utc': dt, 'ph_total': [7, 8, 8, 10]}, ['datetime_utc','ph_total'])
+    tsg = make_df({'datetime_utc': dt, 'temp': [20, 21, 21, 23], 'salinity': [35, 36, 36, 38]}, ['datetime_utc','temp','salinity'])
+    gps = make_df({'datetime_utc': dt, 'latitude': [10, 11, 11, 13], 'longitude': [20, 21, 21, 23]}, ['datetime_utc','latitude','longitude'])
+    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    assert len(df) == 1
+    # test that it drops duplicates and keeps the first occurrence
+    assert df['rho_ppb'].iloc[0] == 1 and df['ph_total'].iloc[0] == 7
+    # test that it averages the duplicates
+    #assert df['temp'].iloc[0] == 20.5 and df['salinity'].iloc[0] == 35.5
+
+def test_resample_tables_with_unsorted_timestamps():
+    dt = pd.to_datetime(['2023-01-01 00:00:04', '2023-01-01 00:00:02', '2023-01-01 00:00:00', '2023-01-01 00:00:06'])
+    fluoro = make_df({'datetime_utc': dt, 'rho_ppb': [4, 2, 1, 5]}, ['datetime_utc','rho_ppb'])
+    ph = make_df({'datetime_utc': dt, 'ph_total': [10, 8, 7, 11]}, ['datetime_utc','ph_total'])
+    tsg = make_df({'datetime_utc': dt, 'temp': [23, 21, 20, 24], 'salinity': [38, 36, 35, 39]}, ['datetime_utc','temp','salinity'])
+    gps = make_df({'datetime_utc': dt, 'latitude': [13, 11, 10, 14], 'longitude': [23, 21, 20, 24]}, ['datetime_utc','latitude','longitude'])
+    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    assert set(['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity']).issubset(df.columns)
+
+def test_resample_tables_with_empty_input():
+    dt = pd.to_datetime([])
+    fluoro = make_df({'datetime_utc': dt, 'rho_ppb': []}, ['datetime_utc','rho_ppb'])
+    ph = make_df({'datetime_utc': dt, 'ph_total': []}, ['datetime_utc','ph_total'])
+    tsg = make_df({'datetime_utc': dt, 'temp': [], 'salinity': []}, ['datetime_utc','temp','salinity'])
+    gps = make_df({'datetime_utc': dt, 'latitude': [], 'longitude': []}, ['datetime_utc','latitude','longitude'])
+    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    assert df.empty
+
+def test_resample_tables_with_wrong_types():
+    dt = pd.date_range('2023-01-01', periods=2, freq='2s')
+    fluoro = make_df({'datetime_utc': dt, 'rho_ppb': ['a', 'b']}, ['datetime_utc','rho_ppb'])
+    ph = make_df({'datetime_utc': dt, 'ph_total': ['x', 'y']}, ['datetime_utc','ph_total'])
+    tsg = make_df({'datetime_utc': dt, 'temp': ['foo', 'bar'], 'salinity': ['baz', 'qux']}, ['datetime_utc','temp','salinity'])
+    gps = make_df({'datetime_utc': dt, 'latitude': [10, 11], 'longitude': [20, 21]}, ['datetime_utc','latitude','longitude'])
+    try:
+        resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    except Exception:
+        pass  # Acceptable if function raises
+
+def test_resample_tables_with_extra_columns():
+    dt = pd.date_range('2023-01-01', periods=2, freq='2s')
+    fluoro = make_df({'datetime_utc': dt, 'rho_ppb': [1, 2], 'extra1': [100, 200]}, ['datetime_utc','rho_ppb','extra1'])
+    ph = make_df({'datetime_utc': dt, 'ph_total': [7, 8], 'extra2': [300, 400]}, ['datetime_utc','ph_total','extra2'])
+    tsg = make_df({'datetime_utc': dt, 'temp': [20, 21], 'salinity': [35, 36], 'extra3': [500, 600]}, ['datetime_utc','temp','salinity','extra3'])
+    gps = make_df({'datetime_utc': dt, 'latitude': [10, 11], 'longitude': [20, 21], 'extra4': [700, 800]}, ['datetime_utc','latitude','longitude','extra4'])
+    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    assert 'extra1' not in df.columns and 'extra2' not in df.columns and 'extra3' not in df.columns and 'extra4' not in df.columns

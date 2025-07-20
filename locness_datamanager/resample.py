@@ -39,44 +39,53 @@ def resample_tables(fluoro, ph, tsg, gps, resample_interval=None, config=None):
     """
     Resample each table to the given interval and join into a single DataFrame.
     If resample_interval is None, get it from config['res_int'].
+    If all source DataFrames are empty, return an empty DataFrame with expected columns.
     """
     if config is None:
         config = get_config()
     if resample_interval is None:
         resample_interval = config.get('res_int', '2s')
-    # Set datetime_utc as index and ensure datetime
-    for name, df in zip(['rhodamine', 'ph', 'tsg', 'gps'], [fluoro, ph, tsg, gps]):
-        if 'datetime_utc' not in df.columns:
-            warnings.warn(f"Table '{name}' missing 'datetime_utc' column or is empty. Skipping.")
-            df_empty = pd.DataFrame()
-            if name == 'rhodamine': fluoro = df_empty
-            elif name == 'ph': ph = df_empty
-            elif name == 'tsg': tsg = df_empty
-            elif name == 'gps': gps = df_empty
-            continue
+
+    expected_cols = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'vrse', 'temp', 'salinity']
+
+    # If all DataFrames are empty, return empty DataFrame with expected columns
+    if all(df.empty for df in [fluoro, ph, tsg, gps]):
+        return pd.DataFrame(columns=expected_cols)
+
+    # Helper to prepare each DataFrame
+    def prep_df(df, name):
+        if 'datetime_utc' not in df.columns or df.empty:
+            warnings.warn(f"Table '{name}' missing 'datetime_utc' or is empty. Skipping.")
+            return pd.DataFrame()
+        df = df.copy()
         df['datetime_utc'] = pd.to_datetime(df['datetime_utc'])
-        if df['datetime_utc'].duplicated().any():
-            warnings.warn(f"Duplicate timestamps found in {name} table. Dropping duplicates.")
         df = df.drop_duplicates(subset='datetime_utc').set_index('datetime_utc')
-        if name == 'rhodamine': fluoro = df
-        elif name == 'ph': ph = df
-        elif name == 'tsg': tsg = df
-        elif name == 'gps': gps = df
-    # Resample
-    fluoro_res = fluoro.resample(resample_interval).nearest()
-    ph_res = ph.resample(resample_interval).nearest()
-    tsg_res = tsg.resample(resample_interval).nearest()
-    gps_res = gps.resample(resample_interval).nearest()
-    # Combine all on datetime_utc
-    df = fluoro_res.join([ph_res, tsg_res, gps_res], how='outer')
-    df = df.reset_index()
+        return df
+
+    fluoro = prep_df(fluoro, 'rhodamine')
+    ph = prep_df(ph, 'ph')
+    tsg = prep_df(tsg, 'tsg')
+    gps = prep_df(gps, 'gps')
+
+    # Resample using nearest if not empty
+    def resample_nearest(df):
+        return df.resample(resample_interval).nearest() if not df.empty else pd.DataFrame()
+
+    fluoro_res = resample_nearest(fluoro)
+    ph_res = resample_nearest(ph)
+    tsg_res = resample_nearest(tsg)
+    gps_res = resample_nearest(gps)
+
+    # Join all on datetime_utc
+    df = fluoro_res.join([ph_res, tsg_res, gps_res], how='outer').reset_index()
+
     # Ensure all expected columns exist
-    cols = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'vrse', 'temp', 'salinity']
-    for col in cols:
+    for col in expected_cols:
         if col not in df.columns:
             df[col] = pd.NA
-    df = df[cols]
-    return df
+            
+    # Return only expected columns
+    return df[expected_cols]
 
 def add_corrected_ph(df, k0=0.0, k2=0.0):
     """
