@@ -89,7 +89,22 @@ def setup_sqlite_db(db_path):
         os.makedirs(db_dir)
     
     conn = sqlite3.connect(db_path)
-    # Enable WAL mode for concurrency
+    cursor = conn.cursor()
+
+    # Check if any of the main tables already exist
+    tables = ['rhodamine', 'ph', 'tsg', 'gps', 'underway_summary']
+    existing_tables = []
+    for table in tables:
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?;",
+            (table,)
+        )
+        if cursor.fetchone():
+            existing_tables.append(table)
+    if existing_tables:
+        print(f"Warning: The following tables already exist and will not be created: {', '.join(existing_tables)}")
+
+    # Enable WAL mode for concurrency and create tables
     conn.executescript(CREATE_TABLES_TEMPLATE)
     print(f"SQLite database initialized at {db_path} (WAL mode enabled)")
     conn.close()
