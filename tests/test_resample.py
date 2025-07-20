@@ -85,7 +85,7 @@ def test_resample_tables_joins_and_resamples():
     ph = make_df({'datetime_utc': dt, 'ph_total': [7,8,9,10]}, ['datetime_utc','ph_total'])
     tsg = make_df({'datetime_utc': dt, 'temp': [20,21,22,23], 'salinity': [35,36,37,38]}, ['datetime_utc','temp','salinity'])
     gps = make_df({'datetime_utc': dt, 'latitude': [10,11,12,13], 'longitude': [20,21,22,23]}, ['datetime_utc','latitude','longitude'])
-    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    df = resample.resample_raw_data(fluoro, ph, tsg, gps, resample_interval='2s')
     assert set(['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity']).issubset(df.columns)
     assert len(df) == 4
 
@@ -126,7 +126,7 @@ def test_resample_tables_with_missing_values():
     ph = make_df({'datetime_utc': dt, 'ph_total': [7, 8, np.nan, 10]}, ['datetime_utc','ph_total'])
     tsg = make_df({'datetime_utc': dt, 'temp': [20, 21, 22, np.nan], 'salinity': [35, 36, np.nan, 38]}, ['datetime_utc','temp','salinity'])
     gps = make_df({'datetime_utc': dt, 'latitude': [10, 11, 12, 13], 'longitude': [20, 21, 22, 23]}, ['datetime_utc','latitude','longitude'])
-    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    df = resample.resample_raw_data(fluoro, ph, tsg, gps, resample_interval='2s')
     assert len(df) == 4
     # Should not raise, and columns should exist
     assert 'rho_ppb' in df.columns and 'ph_total' in df.columns
@@ -137,7 +137,7 @@ def test_resample_tables_with_duplicate_timestamps():
     ph = make_df({'datetime_utc': dt, 'ph_total': [7, 8, 8, 10]}, ['datetime_utc','ph_total'])
     tsg = make_df({'datetime_utc': dt, 'temp': [20, 21, 21, 23], 'salinity': [35, 36, 36, 38]}, ['datetime_utc','temp','salinity'])
     gps = make_df({'datetime_utc': dt, 'latitude': [10, 11, 11, 13], 'longitude': [20, 21, 21, 23]}, ['datetime_utc','latitude','longitude'])
-    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    df = resample.resample_raw_data(fluoro, ph, tsg, gps, resample_interval='2s')
     assert len(df) == 1
     # test that it drops duplicates and keeps the first occurrence
     assert df['rho_ppb'].iloc[0] == 1 and df['ph_total'].iloc[0] == 7
@@ -150,7 +150,7 @@ def test_resample_tables_with_unsorted_timestamps():
     ph = make_df({'datetime_utc': dt, 'ph_total': [10, 8, 7, 11]}, ['datetime_utc','ph_total'])
     tsg = make_df({'datetime_utc': dt, 'temp': [23, 21, 20, 24], 'salinity': [38, 36, 35, 39]}, ['datetime_utc','temp','salinity'])
     gps = make_df({'datetime_utc': dt, 'latitude': [13, 11, 10, 14], 'longitude': [23, 21, 20, 24]}, ['datetime_utc','latitude','longitude'])
-    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    df = resample.resample_raw_data(fluoro, ph, tsg, gps, resample_interval='2s')
     assert set(['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'temp', 'salinity']).issubset(df.columns)
 
 def test_resample_tables_with_empty_input():
@@ -159,7 +159,7 @@ def test_resample_tables_with_empty_input():
     ph = make_df({'datetime_utc': dt, 'ph_total': []}, ['datetime_utc','ph_total'])
     tsg = make_df({'datetime_utc': dt, 'temp': [], 'salinity': []}, ['datetime_utc','temp','salinity'])
     gps = make_df({'datetime_utc': dt, 'latitude': [], 'longitude': []}, ['datetime_utc','latitude','longitude'])
-    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    df = resample.resample_raw_data(fluoro, ph, tsg, gps, resample_interval='2s')
     assert df.empty
 
 def test_resample_tables_with_wrong_types():
@@ -169,7 +169,7 @@ def test_resample_tables_with_wrong_types():
     tsg = make_df({'datetime_utc': dt, 'temp': ['foo', 'bar'], 'salinity': ['baz', 'qux']}, ['datetime_utc','temp','salinity'])
     gps = make_df({'datetime_utc': dt, 'latitude': [10, 11], 'longitude': [20, 21]}, ['datetime_utc','latitude','longitude'])
     try:
-        resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+        resample.resample_raw_data(fluoro, ph, tsg, gps, resample_interval='2s')
     except Exception:
         pass  # Acceptable if function raises
 
@@ -179,5 +179,101 @@ def test_resample_tables_with_extra_columns():
     ph = make_df({'datetime_utc': dt, 'ph_total': [7, 8], 'extra2': [300, 400]}, ['datetime_utc','ph_total','extra2'])
     tsg = make_df({'datetime_utc': dt, 'temp': [20, 21], 'salinity': [35, 36], 'extra3': [500, 600]}, ['datetime_utc','temp','salinity','extra3'])
     gps = make_df({'datetime_utc': dt, 'latitude': [10, 11], 'longitude': [20, 21], 'extra4': [700, 800]}, ['datetime_utc','latitude','longitude','extra4'])
-    df = resample.resample_tables(fluoro, ph, tsg, gps, resample_interval='2s')
+    df = resample.resample_raw_data(fluoro, ph, tsg, gps, resample_interval='2s')
     assert 'extra1' not in df.columns and 'extra2' not in df.columns and 'extra3' not in df.columns and 'extra4' not in df.columns
+
+
+# --- Tests for incremental raw data processing ---
+import types
+
+@patch('locness_datamanager.resample.get_last_summary_timestamp')
+@patch('locness_datamanager.resample.load_sqlite_tables_after_timestamp')
+@patch('locness_datamanager.resample.load_sqlite_tables')
+@patch('locness_datamanager.resample.write_resampled_to_sqlite')
+@patch('locness_datamanager.resample.file_writers.to_csv')
+@patch('locness_datamanager.resample.file_writers.to_parquet')
+def test_process_raw_data_incremental_incremental_mode(
+    mock_parquet, mock_csv, mock_write_sqlite, mock_load_all, mock_load_after, mock_get_last_ts
+):
+    # Simulate last timestamp exists
+    mock_get_last_ts.return_value = pd.Timestamp('2023-01-01 00:00:00')
+    # Simulate new data after last timestamp
+    dt = pd.date_range('2023-01-01 00:00:02', periods=2, freq='2s')
+    fluoro = pd.DataFrame({'datetime_utc': dt, 'rho_ppb': [1,2]})
+    ph = pd.DataFrame({'datetime_utc': dt, 'ph_total': [7,8], 'vrse': [0.1,0.2]})
+    tsg = pd.DataFrame({'datetime_utc': dt, 'temp': [20,21], 'salinity': [35,36]})
+    gps = pd.DataFrame({'datetime_utc': dt, 'latitude': [10,11], 'longitude': [20,21]})
+    mock_load_after.return_value = (fluoro, ph, tsg, gps)
+    mock_load_all.return_value = (fluoro, ph, tsg, gps)
+    # Run incremental mode
+    result = resample.process_raw_data_incremental(
+        sqlite_path='dummy.sqlite',
+        resample_interval='2s',
+        summary_table='underway_summary',
+        write_csv=True,
+        write_parquet=True,
+        replace_all=False
+    )
+    assert not result.empty
+    assert mock_write_sqlite.called
+    assert mock_csv.called
+    assert mock_parquet.called
+    # Check that the number of rows matches the number of unique datetimes
+    expected_rows = len(dt)
+    assert len(result) == expected_rows, f"Expected {expected_rows} rows, got {len(result)}"
+
+
+@patch('locness_datamanager.resample.get_last_summary_timestamp')
+@patch('locness_datamanager.resample.load_sqlite_tables_after_timestamp')
+@patch('locness_datamanager.resample.load_sqlite_tables')
+@patch('locness_datamanager.resample.write_resampled_to_sqlite')
+def test_process_raw_data_incremental_replace_all(
+    mock_write_sqlite, mock_load_all, mock_load_after, mock_get_last_ts
+):
+    # Simulate replace_all mode (should clear table and process all data)
+    mock_get_last_ts.return_value = None
+    dt = pd.date_range('2023-01-01 00:00:00', periods=2, freq='2s')
+    fluoro = pd.DataFrame({'datetime_utc': dt, 'rho_ppb': [1,2]})
+    ph = pd.DataFrame({'datetime_utc': dt, 'ph_total': [7,8], 'vrse': [0.1,0.2]})
+    tsg = pd.DataFrame({'datetime_utc': dt, 'temp': [20,21], 'salinity': [35,36]})
+    gps = pd.DataFrame({'datetime_utc': dt, 'latitude': [10,11], 'longitude': [20,21]})
+    mock_load_all.return_value = (fluoro, ph, tsg, gps)
+    mock_load_after.return_value = (fluoro, ph, tsg, gps)
+    # Patch sqlite3.connect to avoid real DB ops
+    with patch('sqlite3.connect') as mock_conn:
+        conn = MagicMock()
+        mock_conn.return_value = conn
+        result = resample.process_raw_data_incremental(
+            sqlite_path='dummy.sqlite',
+            resample_interval='2s',
+            summary_table='underway_summary',
+            write_csv=False,
+            write_parquet=False,
+            replace_all=True
+        )
+    assert not result.empty
+    assert mock_write_sqlite.called
+
+
+@patch('locness_datamanager.resample.get_last_summary_timestamp')
+@patch('locness_datamanager.resample.load_sqlite_tables_after_timestamp')
+@patch('locness_datamanager.resample.load_sqlite_tables')
+@patch('locness_datamanager.resample.write_resampled_to_sqlite')
+def test_process_raw_data_incremental_no_new_data(
+    mock_write_sqlite, mock_load_all, mock_load_after, mock_get_last_ts
+):
+    # Simulate no new data after last timestamp
+    mock_get_last_ts.return_value = pd.Timestamp('2023-01-01 00:00:00')
+    empty = pd.DataFrame({'datetime_utc': [], 'rho_ppb': [], 'ph_total': [], 'vrse': [], 'temp': [], 'salinity': [], 'latitude':[], 'longitude':[]})
+    mock_load_after.return_value = (empty, empty, empty, empty)
+    mock_load_all.return_value = (empty, empty, empty, empty)
+    result = resample.process_raw_data_incremental(
+        sqlite_path='dummy.sqlite',
+        resample_interval='2s',
+        summary_table='underway_summary',
+        write_csv=False,
+        write_parquet=False,
+        replace_all=False
+    )
+    assert result.empty
+    assert not mock_write_sqlite.called
