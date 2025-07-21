@@ -285,6 +285,14 @@ wheels = [
 ]
 
 [[package]]
+name = "isfetphcalc"
+version = "0.1.0"
+source = { git = "https://github.com/blongworth/isfetphcalc.git#f3d7745a463daa265477f39fad6b4eeec3939a78" }
+dependencies = [
+    { name = "numpy" },
+]
+
+[[package]]
 name = "locness-datamanager"
 version = "0.1.0"
 source = { editable = "." }
@@ -292,6 +300,7 @@ dependencies = [
     { name = "duckdb" },
     { name = "google-api-python-client" },
     { name = "google-auth-oauthlib" },
+    { name = "isfetphcalc" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyarrow" },
@@ -309,6 +318,7 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.3.1" },
     { name = "google-api-python-client", specifier = ">=2.175.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.2" },
+    { name = "isfetphcalc", git = "https://github.com/blongworth/isfetphcalc.git" },
     { name = "numpy", specifier = ">=2.3.1" },
     { name = "pandas", specifier = ">=2.3.0" },
     { name = "pyarrow", specifier = ">=20.0.0" },

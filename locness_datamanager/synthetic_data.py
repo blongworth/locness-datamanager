@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
-from locness_datamanager.resample import load_and_resample_sqlite, write_resampled_to_sqlite
+from locness_datamanager.resample import process_raw_data_incremental
 import sqlite3
 from locness_datamanager.setup_db import setup_sqlite_db
 
@@ -223,7 +223,6 @@ def parse_args():
     parser.add_argument('--lat', type=float, default=42.5, help='Base latitude for GPS coordinates (default: 42.5)')
     parser.add_argument('--lon', type=float, default=-69.5, help='Base longitude for GPS coordinates (default: -69.5)')
     return parser.parse_args()
-
 
 def write_outputs(df,
                   basepath,
@@ -513,7 +512,7 @@ def write_resampled_outputs(df, basepath, write_csv=False, write_parquet=False, 
         sqlite_file = f"{basepath}_resampled.sqlite"
         print(f"Writing resampled data to {sqlite_file} (SQLite table: underway_summary)...")
         t_sqlite0 = time.perf_counter()
-        write_resampled_to_sqlite(df, sqlite_file, table_name='underway_summary')
+        write_resampled_to_sqlite(df, sqlite_file, 'underway_summary')
         t_sqlite1 = time.perf_counter()
         timings['sqlite'] = t_sqlite1 - t_sqlite0
 
@@ -527,11 +526,10 @@ def main():
     basepath = os.path.join(args.path, args.basename)
     
     # Determine which outputs to write for resampled data
-    any_selected = args.csv or args.parquet or args.sqlite
     write_csv = args.csv
     write_parquet = args.parquet  
     write_sqlite = args.sqlite
-    
+
     # If no specific output selected, don't write any resampled outputs by default
     # (raw sensor data will still be written to SQLite)
     
@@ -540,14 +538,12 @@ def main():
         try:
             while True:
                 print(f"Generating {args.time} seconds of sensor data...")
-                
                 # Generate raw sensor data
                 sensor_data = generate_time_based_sensor_data(
                     duration_seconds=args.time,
                     base_lat=args.lat,
                     base_lon=args.lon
                 )
-                
                 # Write raw sensor data to SQLite
                 raw_sqlite_file = f"{basepath}.sqlite"
                 print(f"Writing raw sensor data to {raw_sqlite_file}...")
@@ -558,30 +554,27 @@ def main():
                     gps_df=sensor_data['gps'],
                     sqlite_path=raw_sqlite_file
                 )
-                
-                # Resample the data from SQLite
-                resampled_df = load_and_resample_sqlite(raw_sqlite_file, args.resample_interval)
-                
-                # Write resampled data to selected outputs
-                if any_selected:
-                    write_resampled_outputs(resampled_df, basepath, write_csv, write_parquet, write_sqlite)
-                
+                # Resample and output using process_raw_data_incremental
+                process_raw_data_incremental(
+                    sqlite_path=raw_sqlite_file,
+                    resample_interval=args.resample_interval,
+                    write_csv=write_csv,
+                    write_parquet=write_parquet,
+                    write_sqlite=write_sqlite
+                )
                 print(f"Sleeping {args.time} seconds before next batch...")
                 time.sleep(args.time)
-                
         except KeyboardInterrupt:
             print("\nStopped continuous generation.")
             sys.exit(0)
     else:
         print(f"Generating {args.time} seconds of sensor data...")
-        
         # Generate raw sensor data
         sensor_data = generate_time_based_sensor_data(
             duration_seconds=args.time,
             base_lat=args.lat,
             base_lon=args.lon
         )
-        
         # Write raw sensor data to SQLite
         raw_sqlite_file = f"{basepath}.sqlite"
         print(f"Writing raw sensor data to {raw_sqlite_file}...")
@@ -589,18 +582,17 @@ def main():
             rhodamine_df=sensor_data['rhodamine'],
             ph_df=sensor_data['ph'],
             tsg_df=sensor_data['tsg'],
+            gps_df=sensor_data['gps'],
             sqlite_path=raw_sqlite_file
         )
-        
-        # Resample the data from SQLite
-        resampled_df = load_and_resample_sqlite(raw_sqlite_file, args.resample_interval)
-        
-        # Write resampled data to selected outputs
-        if any_selected:
-            write_resampled_outputs(resampled_df, basepath, write_csv, write_parquet, write_sqlite)
-        else:
-            print("No resampled output formats selected. Use --csv, --parquet, or --sqlite to write resampled data.")
-        
+        # Resample and output using process_raw_data_incremental
+        process_raw_data_incremental(
+            sqlite_path=raw_sqlite_file,
+            resample_interval=args.resample_interval,
+            write_csv=write_csv,
+            write_parquet=write_parquet,
+            write_sqlite=write_sqlite
+        )
         print("Data generation complete.")
 
 
