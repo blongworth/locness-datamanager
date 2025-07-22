@@ -6,12 +6,13 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 from locness_datamanager.config import get_config
-from locness_datamanager import file_writers
 from locness_datamanager.resample import process_raw_data_incremental
 import sqlite3
 from locness_datamanager.setup_db import setup_sqlite_db
 
 # Functions for generating synthetic data for rhodamine, ph, and tsg tables
+
+# TODO: reuse functions from main or resample after generating raw data and writing to SQLite
 
 def generate_rhodamine_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=None, frequency_hz=1.0):
     """
@@ -207,99 +208,6 @@ def generate_tsg_data(n_records=1, base_lat=42.5, base_lon=-69.5, start_time=Non
     
     return pd.DataFrame(data)
 
-def parse_args():
-    """Parse command-line arguments."""
-    config = get_config()
-    parser = argparse.ArgumentParser(description="Generate synthetic oceanographic data and write to CSV, Parquet, and SQLite.")
-    parser.add_argument('--path', type=str, help='Directory to write output files (default: current directory)')
-    parser.add_argument('--basename', type=str, default=config['basename'], help='Base name for output files (no extension)')
-    parser.add_argument('--time', type=float, default=60.0, help='Duration of data to generate in seconds (default: 60)')
-    parser.add_argument('--table', type=str, default='underway_summary', help='SQLite table name (default: underway_summary)')
-    parser.add_argument('--continuous', action='store_true', default=config['continuous'], help='Continuously generate and write data every "time" seconds')
-    parser.add_argument('--csv', action='store_true', help='Write CSV output for resampled data')
-    parser.add_argument('--parquet', action='store_true', help='Write Parquet output for resampled data')
-    parser.add_argument('--sqlite', action='store_true', help='Write SQLite output for resampled data')
-    parser.add_argument('--resample-interval', type=str, default='2s', help='Resample interval for resampled data (default: 2s)')
-    parser.add_argument('--lat', type=float, default=42.5, help='Base latitude for GPS coordinates (default: 42.5)')
-    parser.add_argument('--lon', type=float, default=-69.5, help='Base longitude for GPS coordinates (default: -69.5)')
-    return parser.parse_args()
-
-def write_outputs(df,
-                  basepath,
-                  table_name,
-                  write_csv=True,
-                  write_parquet=True,
-                  write_sqlite=True):
-    """Write DataFrame to selected outputs, timing each step."""
-    timings = {}
-    csv_file = f"{basepath}.csv"
-    parquet_file = f"{basepath}.parquet"
-    sqlite_file = f"{basepath}.sqlite"
-
-    if write_csv:
-        print(f"Writing to {csv_file} (CSV)...")
-        t_csv0 = time.perf_counter()
-        file_writers.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
-        t_csv1 = time.perf_counter()
-        timings['csv'] = t_csv1 - t_csv0
-
-    if write_parquet:
-        print(f"Writing to {parquet_file} (Parquet)...")
-        t_parquet0 = time.perf_counter()
-        config = get_config()
-        partition_hours = config.get('partition_hours', None)
-        file_writers.to_parquet(df, parquet_file, append=True, partition_hours=partition_hours)
-        t_parquet1 = time.perf_counter()
-        timings['parquet'] = t_parquet1 - t_parquet0
-
-    if write_sqlite:
-        print(f"Writing to {sqlite_file} (SQLite table: {table_name}) ...")
-        t_sqlite0 = time.perf_counter()
-        # If writing to underway_summary table, use special function with integer timestamps
-        if table_name == 'underway_summary':
-            write_to_resampled_data_table(df, sqlite_file)
-        else:
-            file_writers.to_sqlite(df, sqlite_file, table_name=table_name)
-        t_sqlite1 = time.perf_counter()
-        timings['sqlite'] = t_sqlite1 - t_sqlite0
-
-    print("Done.")
-    print("Timing summary:")
-    for k, v in timings.items():
-        print(f"  {k.capitalize()} write: {v:.4f} seconds")
-
-def write_to_underway_summary_table(df, sqlite_path):
-    """
-    Write DataFrame to the underway_summary table with integer timestamps.
-    
-    Args:
-        df: DataFrame with timestamp column and other sensor data
-        sqlite_path: Path to SQLite database
-    """
-    df_copy = df.copy()
-    
-    # Convert datetime timestamps to Unix timestamps (integers)
-    if pd.api.types.is_datetime64_any_dtype(df_copy['datetime_utc']):
-        df_copy['datetime_utc'] = df_copy['datetime_utc'].astype('int64') // 10**9
-    
-    # Ensure column order matches the underway_summary table
-    expected_columns = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph', 'temp_c', 'salinity_psu', 'ph_ma']
-
-    # Only keep columns that exist in the DataFrame and are expected
-    available_columns = [col for col in expected_columns if col in df_copy.columns]
-    df_copy = df_copy[available_columns]
-    
-    conn = sqlite3.connect(sqlite_path)
-    try:
-        # Create tables using the schema from CREATE_TABLES
-        setup_sqlite_db(sqlite_path)
-        df_copy.to_sql('underway_summary', conn, if_exists='append', index=False)
-        print(f"Successfully wrote {len(df_copy)} records to underway_summary table")
-    except Exception as e:
-        print(f"Error writing to underway_summary table: {e}")
-    finally:
-        conn.close()
-
 def write_to_raw_tables(rhodamine_df=None, ph_df=None, tsg_df=None, gps_df=None, sqlite_path="sensors.sqlite"):
     """
     Write synthetic data to the raw rhodamine, ph, tsg, and gps tables in SQLite.
@@ -477,105 +385,33 @@ def generate_time_based_sensor_data(duration_seconds, base_lat=42.5, base_lon=-6
         'gps': gps_df
     }
 
-def write_resampled_outputs(df, basepath, write_csv=False, write_parquet=False, write_sqlite=False):
-    """
-    Write resampled DataFrame to selected outputs.
-    
-    Args:
-        df: Resampled DataFrame with columns: datetime_utc, lat, lon, rhodamine, ph, temp, salinity, ph_ma
-        basepath: Base path for output files
-        write_csv: Whether to write CSV output
-        write_parquet: Whether to write Parquet output
-        write_sqlite: Whether to write SQLite output
-    """
-    timings = {}
-    
-    if write_csv:
-        csv_file = f"{basepath}_resampled.csv"
-        print(f"Writing resampled data to {csv_file} (CSV)...")
-        t_csv0 = time.perf_counter()
-        file_writers.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
-        t_csv1 = time.perf_counter()
-        timings['csv'] = t_csv1 - t_csv0
+# Argument parsing: load defaults from config.toml, override with CLI
+def parse_args():
+    from locness_datamanager.config import get_config
+    import argparse
+    config = get_config()
 
-    if write_parquet:
-        parquet_file = f"{basepath}_resampled.parquet"
-        print(f"Writing resampled data to {parquet_file} (Parquet)...")
-        t_parquet0 = time.perf_counter()
-        config = get_config()
-        partition_hours = config.get('partition_hours', None)
-        file_writers.to_parquet(df, parquet_file, append=True, partition_hours=partition_hours)
-        t_parquet1 = time.perf_counter()
-        timings['parquet'] = t_parquet1 - t_parquet0
-
-    if write_sqlite:
-        sqlite_file = f"{basepath}_resampled.sqlite"
-        print(f"Writing resampled data to {sqlite_file} (SQLite table: underway_summary)...")
-        t_sqlite0 = time.perf_counter()
-        write_resampled_to_sqlite(df, sqlite_file, 'underway_summary')
-        t_sqlite1 = time.perf_counter()
-        timings['sqlite'] = t_sqlite1 - t_sqlite0
-
-    if timings:
-        print("Resampled data timing summary:")
-        for k, v in timings.items():
-            print(f"  {k.capitalize()} write: {v:.4f} seconds")
+    parser = argparse.ArgumentParser(description="Generate and process synthetic sensor data.")
+    parser.add_argument("--path", type=str, default=config.get("cloud_path", "."), help="Output directory for generated files")
+    parser.add_argument("--basename", type=str, default=config.get("basename", "synthetic_data"), help="Base name for output files")
+    parser.add_argument("--time", type=int, default=int(config.get("time", 60)), help="Duration of data to generate in seconds (per batch)")
+    parser.add_argument("--resample-interval", type=str, default=config.get("res_int", "2s"), help="Resampling interval (e.g., '2s')")
+    parser.add_argument("--csv", action="store_true", default=False, help="Write resampled data to CSV")
+    parser.add_argument("--parquet", action="store_true", default=True, help="Write resampled data to Parquet")
+    parser.add_argument("--sqlite", action="store_true", default=False, help="Write resampled data to external SQLite")
+    parser.add_argument("--continuous", action="store_true", default=config.get("continuous", False), help="Run in continuous mode (loop)")
+    args = parser.parse_args()
+    return args
 
 def main():
     args = parse_args()
     basepath = os.path.join(args.path, args.basename)
-    
-    # Determine which outputs to write for resampled data
-    write_csv = args.csv
-    write_parquet = args.parquet  
-    write_sqlite = args.sqlite
 
-    # If no specific output selected, don't write any resampled outputs by default
-    # (raw sensor data will still be written to SQLite)
-    
-    if args.continuous:
-        print(f"Continuous mode enabled. Generating {args.time} seconds of sensor data every {args.time} seconds. Press Ctrl+C to stop.")
-        try:
-            while True:
-                print(f"Generating {args.time} seconds of sensor data...")
-                # Generate raw sensor data
-                sensor_data = generate_time_based_sensor_data(
-                    duration_seconds=args.time,
-                    base_lat=args.lat,
-                    base_lon=args.lon
-                )
-                # Write raw sensor data to SQLite
-                raw_sqlite_file = f"{basepath}.sqlite"
-                print(f"Writing raw sensor data to {raw_sqlite_file}...")
-                write_to_raw_tables(
-                    rhodamine_df=sensor_data['rhodamine'],
-                    ph_df=sensor_data['ph'],
-                    tsg_df=sensor_data['tsg'],
-                    gps_df=sensor_data['gps'],
-                    sqlite_path=raw_sqlite_file
-                )
-                # Resample and output using process_raw_data_incremental
-                process_raw_data_incremental(
-                    sqlite_path=raw_sqlite_file,
-                    resample_interval=args.resample_interval,
-                    write_csv=write_csv,
-                    write_parquet=write_parquet,
-                    write_sqlite=write_sqlite
-                )
-                print(f"Sleeping {args.time} seconds before next batch...")
-                time.sleep(args.time)
-        except KeyboardInterrupt:
-            print("\nStopped continuous generation.")
-            sys.exit(0)
-    else:
-        print(f"Generating {args.time} seconds of sensor data...")
-        # Generate raw sensor data
+    # Only use this module for raw data generation and writing
+    def generate_and_write_raw():
         sensor_data = generate_time_based_sensor_data(
             duration_seconds=args.time,
-            base_lat=args.lat,
-            base_lon=args.lon
         )
-        # Write raw sensor data to SQLite
         raw_sqlite_file = f"{basepath}.sqlite"
         print(f"Writing raw sensor data to {raw_sqlite_file}...")
         write_to_raw_tables(
@@ -585,14 +421,35 @@ def main():
             gps_df=sensor_data['gps'],
             sqlite_path=raw_sqlite_file
         )
-        # Resample and output using process_raw_data_incremental
+        return raw_sqlite_file
+
+    # Use resample module's process_raw_data_incremental for resampling and output
+    def resample_and_output(raw_sqlite_file):
         process_raw_data_incremental(
             sqlite_path=raw_sqlite_file,
             resample_interval=args.resample_interval,
-            write_csv=write_csv,
-            write_parquet=write_parquet,
-            write_sqlite=write_sqlite
+            summary_table="underway_summary",
+            write_csv=args.csv,
+            write_parquet=args.parquet,
         )
+        print(f"Resampled data written to underway_summary table in {raw_sqlite_file}")
+
+    if args.continuous:
+        print(f"Continuous mode enabled. Generating {args.time} seconds of sensor data every {args.time} seconds. Press Ctrl+C to stop.")
+        try:
+            while True:
+                print(f"Generating {args.time} seconds of sensor data...")
+                raw_sqlite_file = generate_and_write_raw()
+                resample_and_output(raw_sqlite_file)
+                print(f"Sleeping {args.time} seconds before next batch...")
+                time.sleep(args.time)
+        except KeyboardInterrupt:
+            print("\nStopped continuous generation.")
+            sys.exit(0)
+    else:
+        print(f"Generating {args.time} seconds of sensor data...")
+        raw_sqlite_file = generate_and_write_raw()
+        resample_and_output(raw_sqlite_file)
         print("Data generation complete.")
 
 

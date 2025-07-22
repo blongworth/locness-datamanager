@@ -354,31 +354,74 @@ def process_raw_data_incremental(
     print(f"Resampling data with interval: {resample_interval}")
     df = resample_raw_data(fluoro, ph, tsg, gps, resample_interval)
     df = add_computed_fields(df, config)
-    
+
+    # Filter out records with datetime_utc <= last_summary_timestamp (if last_summary_timestamp exists)
+    if last_timestamp is not None and not df.empty:
+        # Ensure both are comparable (convert to pandas.Timestamp if needed)
+        if not pd.api.types.is_datetime64_any_dtype(df['datetime_utc']):
+            df['datetime_utc'] = pd.to_datetime(df['datetime_utc'])
+        df = df[df['datetime_utc'] > last_timestamp]
+
     if df.empty:
         print("No data after resampling")
         return df
-        
+
     print(f"Generated {len(df)} resampled records")
-    
+
     # Write to summary table
     print(f"Writing to {summary_table} table...")
     write_resampled_to_sqlite(df, sqlite_path, summary_table)
-    
+
+    # --- Recalculate and update moving averages for affected rows ---
+    # Determine window size and frequency from config
+    window_seconds = config.get('ph_ma_window', 120)
+    freq_hz = config.get('ph_freq', 0.5)
+    window_size = max(1, int(window_seconds * freq_hz))
+
+    # Find the earliest new datetime_utc in this batch
+    if not df.empty:
+        min_new_dt = df['datetime_utc'].min()
+        # Load enough previous rows to cover the moving average window
+        with sqlite3.connect(sqlite_path) as conn:
+            # Get all rows with datetime_utc >= (min_new_dt - window_seconds)
+            min_new_unix = int((min_new_dt - pd.Timedelta(seconds=window_seconds)).timestamp())
+            query = f"SELECT * FROM {summary_table} WHERE datetime_utc >= {min_new_unix} ORDER BY datetime_utc"
+            df_window = pd.read_sql_query(query, conn)
+        # Convert datetime_utc to datetime
+        if not pd.api.types.is_datetime64_any_dtype(df_window['datetime_utc']):
+            df_window['datetime_utc'] = pd.to_datetime(df_window['datetime_utc'], unit='s')
+        # Recalculate moving averages
+        df_window = add_ph_moving_average(df_window, window_seconds=window_seconds, freq_hz=freq_hz)
+        # Only update rows that are in the new batch (datetime_utc >= min_new_dt)
+        update_rows = df_window[df_window['datetime_utc'] >= min_new_dt]
+        # Write updated moving averages back to the database
+        with sqlite3.connect(sqlite_path) as conn:
+            for _, row in update_rows.iterrows():
+                dt_unix = int(row['datetime_utc'].timestamp())
+                updates = []
+                if 'ph_corrected_ma' in row:
+                    updates.append(f"ph_corrected_ma = {row['ph_corrected_ma'] if pd.notnull(row['ph_corrected_ma']) else 'NULL'}")
+                if 'ph_total_ma' in row:
+                    updates.append(f"ph_total_ma = {row['ph_total_ma'] if pd.notnull(row['ph_total_ma']) else 'NULL'}")
+                if updates:
+                    set_clause = ', '.join(updates)
+                    conn.execute(f"UPDATE {summary_table} SET {set_clause} WHERE datetime_utc = {dt_unix}")
+            conn.commit()
+
     # Optionally write to CSV
     if write_csv:
         print(f"Writing to CSV: {csv_path}")
         mode = 'w' if replace_all else 'a'
         header = replace_all or not os.path.exists(csv_path)
         file_writers.to_csv(df, csv_path, mode=mode, header=header)
-        
+
     # Optionally write to Parquet
     if write_parquet:
         print(f"Writing to Parquet: {parquet_path}")
         append = not replace_all
         partition_hours = config.get('partition_hours', None)
         file_writers.to_parquet(df, parquet_path, append=append, partition_hours=partition_hours)
-    
+
     print(f"Processing complete. {len(df)} records processed.")
     return df
 

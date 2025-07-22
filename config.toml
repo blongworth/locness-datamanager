@@ -15,6 +15,7 @@ ph_k2 = 0.0  # k2 value for ph correction
 partition_hours = 12  # hours to partition the data for writing, not used yet
 
 [synthetic_data]
+time = 60 # time in seconds of synthetic data to generate
 num = 30 # number of samples to generate
 freq = 0.5 # frequency in Hz for the generated data
 continuous = true # whether to generate continuous data or not
