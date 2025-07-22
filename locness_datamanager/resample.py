@@ -180,30 +180,6 @@ def poll_new_records(
             break
         time.sleep(poll_interval)
 
-def write_outputs(df, basepath, table_name):
-    """Write DataFrame to CSV, Parquet timing each step."""
-    import time
-    timings = {}
-    csv_file = f"{basepath}.csv"
-    parquet_file = f"{basepath}.parquet"
-
-    print(f"Writing to {csv_file} (CSV)...")
-    t_csv0 = time.perf_counter()
-    file_writers.to_csv(df, csv_file, mode='a' if os.path.exists(csv_file) else 'w', header=not os.path.exists(csv_file))
-    t_csv1 = time.perf_counter()
-    timings['csv'] = t_csv1 - t_csv0
-
-    print(f"Writing to {parquet_file} (Parquet)...")
-    t_parquet0 = time.perf_counter()
-    file_writers.to_parquet(df, parquet_file, append=True)
-    t_parquet1 = time.perf_counter()
-    timings['parquet'] = t_parquet1 - t_parquet0
-
-    print("Done.")
-    print("Timing summary:")
-    for k, v in timings.items():
-        print(f"  {k.capitalize()} write: {v:.4f} seconds")
-
 def get_last_summary_timestamp(sqlite_path, summary_table='underway_summary'):
     """
     Get the most recent timestamp from the summary table.
@@ -448,23 +424,6 @@ def write_resampled_to_sqlite(df, sqlite_path, output_table):
         print(f"Error writing to {output_table} table: {e}")
     finally:
         conn.close()
-
-def write_resampled_data_to_sqlite(sqlite_path, resample_interval='2s', output_table='underway_summary'):
-    """
-    Load, resample data, and write directly to the underway_summary table in SQLite.
-
-    Args:
-        sqlite_path: Path to SQLite database
-        resample_interval: Resample interval (default '2s')
-        output_table: Name of output table (default 'underway_summary')
-    """
-    # Load and resample data
-    df = load_and_resample_sqlite(sqlite_path, resample_interval)
-
-    # Write to the underway_summary table
-    write_resampled_to_sqlite(df, sqlite_path, output_table)
-    
-    return df
 
 def main():
     import argparse
