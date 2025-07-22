@@ -1,4 +1,5 @@
 import pytest
+import sqlite3
 import pandas as pd
 import numpy as np
 from unittest.mock import patch, MagicMock
@@ -186,73 +187,69 @@ def test_resample_tables_with_extra_columns():
 # --- Tests for incremental raw data processing ---
 import types
 
-@patch('locness_datamanager.resample.get_last_summary_timestamp')
-@patch('locness_datamanager.resample.load_sqlite_tables_after_timestamp')
-@patch('locness_datamanager.resample.load_sqlite_tables')
-@patch('locness_datamanager.resample.write_resampled_to_sqlite')
-@patch('locness_datamanager.resample.file_writers.to_csv')
-@patch('locness_datamanager.resample.file_writers.to_parquet')
-def test_process_raw_data_incremental_incremental_mode(
-    mock_parquet, mock_csv, mock_write_sqlite, mock_load_all, mock_load_after, mock_get_last_ts
-):
-    # Simulate last timestamp exists
-    mock_get_last_ts.return_value = pd.Timestamp('2023-01-01 00:00:00')
-    # Simulate new data after last timestamp
-    dt = pd.date_range('2023-01-01 00:00:02', periods=2, freq='2s')
-    fluoro = pd.DataFrame({'datetime_utc': dt, 'rho_ppb': [1,2]})
-    ph = pd.DataFrame({'datetime_utc': dt, 'ph_total': [7,8], 'vrse': [0.1,0.2]})
-    tsg = pd.DataFrame({'datetime_utc': dt, 'temp': [20,21], 'salinity': [35,36]})
-    gps = pd.DataFrame({'datetime_utc': dt, 'latitude': [10,11], 'longitude': [20,21]})
-    mock_load_after.return_value = (fluoro, ph, tsg, gps)
-    mock_load_all.return_value = (fluoro, ph, tsg, gps)
-    # Run incremental mode
-    result = resample.process_raw_data_incremental(
-        sqlite_path='dummy.sqlite',
-        resample_interval='2s',
-        summary_table='underway_summary',
-        write_csv=True,
-        write_parquet=True,
-        replace_all=False
-    )
-    assert not result.empty
-    assert mock_write_sqlite.called
-    assert mock_csv.called
-    assert mock_parquet.called
-    # Check that the number of rows matches the number of unique datetimes
-    expected_rows = len(dt)
-    assert len(result) == expected_rows, f"Expected {expected_rows} rows, got {len(result)}"
-
-
-@patch('locness_datamanager.resample.get_last_summary_timestamp')
-@patch('locness_datamanager.resample.load_sqlite_tables_after_timestamp')
-@patch('locness_datamanager.resample.load_sqlite_tables')
-@patch('locness_datamanager.resample.write_resampled_to_sqlite')
-def test_process_raw_data_incremental_replace_all(
-    mock_write_sqlite, mock_load_all, mock_load_after, mock_get_last_ts
-):
-    # Simulate replace_all mode (should clear table and process all data)
-    mock_get_last_ts.return_value = None
-    dt = pd.date_range('2023-01-01 00:00:00', periods=2, freq='2s')
-    fluoro = pd.DataFrame({'datetime_utc': dt, 'rho_ppb': [1,2]})
-    ph = pd.DataFrame({'datetime_utc': dt, 'ph_total': [7,8], 'vrse': [0.1,0.2]})
-    tsg = pd.DataFrame({'datetime_utc': dt, 'temp': [20,21], 'salinity': [35,36]})
-    gps = pd.DataFrame({'datetime_utc': dt, 'latitude': [10,11], 'longitude': [20,21]})
-    mock_load_all.return_value = (fluoro, ph, tsg, gps)
-    mock_load_after.return_value = (fluoro, ph, tsg, gps)
-    # Patch sqlite3.connect to avoid real DB ops
-    with patch('sqlite3.connect') as mock_conn:
-        conn = MagicMock()
-        mock_conn.return_value = conn
+def test_process_raw_data_incremental_incremental_mode():
+    import tempfile
+    import os
+    from locness_datamanager.setup_db import setup_sqlite_db
+    # Create a temp DB
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test_incremental.sqlite")
+        setup_sqlite_db(db_path)
+        # Insert first batch of data
+        dt = pd.date_range('2023-01-01 00:00:02', periods=2, freq='2s')
+        fluoro = pd.DataFrame({'datetime_utc': dt.astype(int) // 10**9, 'rho_ppb': [1,2]})
+        ph = pd.DataFrame({'datetime_utc': dt.astype(int) // 10**9, 'ph_total': [7,8], 'vrse': [0.1,0.2]})
+        tsg = pd.DataFrame({'datetime_utc': dt.astype(int) // 10**9, 'temp': [20,21], 'salinity': [35,36]})
+        gps = pd.DataFrame({'datetime_utc': dt.astype(int) // 10**9, 'latitude': [10,11], 'longitude': [20,21]})
+        with sqlite3.connect(db_path) as conn:
+            fluoro.to_sql('rhodamine', conn, if_exists='append', index=False)
+            ph.to_sql('ph', conn, if_exists='append', index=False)
+            tsg.to_sql('tsg', conn, if_exists='append', index=False)
+            gps.to_sql('gps', conn, if_exists='append', index=False)
+        # Now the connection is closed, run incremental mode
         result = resample.process_raw_data_incremental(
-            sqlite_path='dummy.sqlite',
+            sqlite_path=db_path,
+            resample_interval='2s',
+            summary_table='underway_summary',
+            write_csv=False,
+            write_parquet=False,
+            replace_all=False
+        )
+        assert not result.empty
+        # Check that the number of rows matches the number of unique datetimes
+        expected_rows = len(dt)
+        assert len(result) == expected_rows, f"Expected {expected_rows} rows, got {len(result)}"
+
+
+def test_process_raw_data_incremental_replace_all():
+    import tempfile
+    import os
+    from locness_datamanager.setup_db import setup_sqlite_db
+    # Create a temp DB
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test_replaceall.sqlite")
+        setup_sqlite_db(db_path)
+        # Insert all data
+        dt = pd.date_range('2023-01-01 00:00:00', periods=2, freq='2s')
+        fluoro = pd.DataFrame({'datetime_utc': dt.astype(int) // 10**9, 'rho_ppb': [1,2]})
+        ph = pd.DataFrame({'datetime_utc': dt.astype(int) // 10**9, 'ph_total': [7,8], 'vrse': [0.1,0.2]})
+        tsg = pd.DataFrame({'datetime_utc': dt.astype(int) // 10**9, 'temp': [20,21], 'salinity': [35,36]})
+        gps = pd.DataFrame({'datetime_utc': dt.astype(int) // 10**9, 'latitude': [10,11], 'longitude': [20,21]})
+        with sqlite3.connect(db_path) as conn:
+            fluoro.to_sql('rhodamine', conn, if_exists='append', index=False)
+            ph.to_sql('ph', conn, if_exists='append', index=False)
+            tsg.to_sql('tsg', conn, if_exists='append', index=False)
+            gps.to_sql('gps', conn, if_exists='append', index=False)
+        # Now the connection is closed, run replace_all mode
+        result = resample.process_raw_data_incremental(
+            sqlite_path=db_path,
             resample_interval='2s',
             summary_table='underway_summary',
             write_csv=False,
             write_parquet=False,
             replace_all=True
         )
-    assert not result.empty
-    assert mock_write_sqlite.called
+        assert not result.empty
 
 
 @patch('locness_datamanager.resample.get_last_summary_timestamp')
