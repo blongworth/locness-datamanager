@@ -12,9 +12,10 @@ from isfetphcalc import calc_ph
 # TODO: add error handling for database connection and queries
 # TODO: use time bucket resampling in sqlite (test speed)
 
-def read_table(conn, table, columns):
+def read_table(sqlite_path, table, columns):
     query = f"SELECT {', '.join(columns)} FROM {table}"
-    df = pd.read_sql_query(query, conn)
+    with sqlite3.connect(sqlite_path) as conn:
+        df = pd.read_sql_query(query, conn)
     # Convert integer timestamps to datetime if needed
     if 'datetime_utc' in df.columns and df['datetime_utc'].dtype in ['int64', 'int32']:
         df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], unit='s')
@@ -25,12 +26,10 @@ def load_sqlite_tables(sqlite_path):
     Load raw tables from SQLite and return as DataFrames.
     Returns: fluoro, ph, tsg, gps DataFrames
     """
-    conn = sqlite3.connect(sqlite_path)
-    fluoro = read_table(conn, 'rhodamine', ['datetime_utc','rho_ppb'])
-    ph = read_table(conn, 'ph', ['datetime_utc', 'vrse', 'ph_total'])
-    tsg = read_table(conn, 'tsg', ['datetime_utc', 'temp', 'salinity'])
-    gps = read_table(conn, 'gps', ['datetime_utc', 'latitude', 'longitude'])
-    conn.close()
+    fluoro = read_table(sqlite_path, 'rhodamine', ['datetime_utc','rho_ppb'])
+    ph = read_table(sqlite_path, 'ph', ['datetime_utc', 'vrse', 'ph_total'])
+    tsg = read_table(sqlite_path, 'tsg', ['datetime_utc', 'temp', 'salinity'])
+    gps = read_table(sqlite_path, 'gps', ['datetime_utc', 'latitude', 'longitude'])
     return fluoro, ph, tsg, gps
 
 def resample_raw_data(fluoro, ph, tsg, gps, resample_interval=None):
@@ -215,22 +214,19 @@ def get_last_summary_timestamp(sqlite_path, summary_table='underway_summary'):
     Returns:
         pandas.Timestamp or None if table is empty
     """
-    conn = sqlite3.connect(sqlite_path)
     try:
-        query = f"SELECT MAX(datetime_utc) FROM {summary_table}"
-        result = pd.read_sql_query(query, conn)
-        max_timestamp = result.iloc[0, 0]
-        
-        if max_timestamp is not None:
-            # Convert from Unix timestamp to pandas datetime
-            return pd.to_datetime(max_timestamp, unit='s')
-        else:
-            return None
+        with sqlite3.connect(sqlite_path) as conn:
+            query = f"SELECT MAX(datetime_utc) FROM {summary_table}"
+            result = pd.read_sql_query(query, conn)
+            max_timestamp = result.iloc[0, 0]
+            if max_timestamp is not None:
+                # Convert from Unix timestamp to pandas datetime
+                return pd.to_datetime(max_timestamp, unit='s')
+            else:
+                return None
     except Exception as e:
         print(f"Warning: Could not get last timestamp from {summary_table}: {e}")
         return None
-    finally:
-        conn.close()
 
 def load_sqlite_tables_after_timestamp(sqlite_path, after_timestamp=None):
     """
@@ -243,29 +239,25 @@ def load_sqlite_tables_after_timestamp(sqlite_path, after_timestamp=None):
     Returns: 
         fluoro, ph, tsg, gps DataFrames
     """
-    conn = sqlite3.connect(sqlite_path)
-    
     # Prepare WHERE clause if timestamp filtering is needed
     where_clause = ""
     if after_timestamp is not None:
         # Convert pandas timestamp to Unix timestamp for comparison
         unix_timestamp = int(after_timestamp.timestamp())
         where_clause = f" WHERE datetime_utc > {unix_timestamp}"
-    
-    fluoro = read_table_with_filter(conn, 'rhodamine', ['datetime_utc','rho_ppb'], where_clause)
-    ph = read_table_with_filter(conn, 'ph', ['datetime_utc', 'vrse', 'ph_total'], where_clause)
-    tsg = read_table_with_filter(conn, 'tsg', ['datetime_utc', 'temp', 'salinity'], where_clause)
-    gps = read_table_with_filter(conn, 'gps', ['datetime_utc', 'latitude', 'longitude'], where_clause)
-    
-    conn.close()
+    fluoro = read_table_with_filter(sqlite_path, 'rhodamine', ['datetime_utc','rho_ppb'], where_clause)
+    ph = read_table_with_filter(sqlite_path, 'ph', ['datetime_utc', 'vrse', 'ph_total'], where_clause)
+    tsg = read_table_with_filter(sqlite_path, 'tsg', ['datetime_utc', 'temp', 'salinity'], where_clause)
+    gps = read_table_with_filter(sqlite_path, 'gps', ['datetime_utc', 'latitude', 'longitude'], where_clause)
     return fluoro, ph, tsg, gps
 
-def read_table_with_filter(conn, table, columns, where_clause=""):
+def read_table_with_filter(sqlite_path, table, columns, where_clause=""):
     """
     Read a table with optional WHERE filter.
     """
     query = f"SELECT {', '.join(columns)} FROM {table}{where_clause}"
-    df = pd.read_sql_query(query, conn)
+    with sqlite3.connect(sqlite_path) as conn:
+        df = pd.read_sql_query(query, conn)
     # Convert integer timestamps to datetime if needed
     if 'datetime_utc' in df.columns and df['datetime_utc'].dtype in ['int64', 'int32']:
         df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], unit='s')
