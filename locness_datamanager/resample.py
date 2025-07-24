@@ -4,6 +4,7 @@ import time
 from typing import Optional
 import os
 import warnings
+import logging
 from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
 from isfetphcalc import calc_ph
@@ -14,7 +15,11 @@ from isfetphcalc import calc_ph
 
 def read_table(conn, table, columns):
     query = f"SELECT {', '.join(columns)} FROM {table}"
-    df = pd.read_sql_query(query, conn)
+    try:
+        df = pd.read_sql_query(query, conn)
+    except Exception as e:
+        logging.error(f"Error reading table '{table}': {e}")
+        return pd.DataFrame(columns=columns)
     # Convert integer timestamps to datetime if needed
     if 'datetime_utc' in df.columns and df['datetime_utc'].dtype in ['int64', 'int32']:
         df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], unit='s')
@@ -25,12 +30,21 @@ def load_sqlite_tables(sqlite_path):
     Load raw tables from SQLite and return as DataFrames.
     Returns: fluoro, ph, tsg, gps DataFrames
     """
-    conn = sqlite3.connect(sqlite_path)
-    fluoro = read_table(conn, 'rhodamine', ['datetime_utc','rho_ppb'])
-    ph = read_table(conn, 'ph', ['datetime_utc', 'vrse', 'ph_total'])
-    tsg = read_table(conn, 'tsg', ['datetime_utc', 'temp', 'salinity'])
-    gps = read_table(conn, 'gps', ['datetime_utc', 'latitude', 'longitude'])
-    conn.close()
+    try:
+        conn = sqlite3.connect(sqlite_path)
+    except Exception as e:
+        logging.error(f"Error connecting to SQLite database: {e}")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    try:
+        fluoro = read_table(conn, 'rhodamine', ['datetime_utc','rho_ppb'])
+        ph = read_table(conn, 'ph', ['datetime_utc', 'vrse', 'ph_total'])
+        tsg = read_table(conn, 'tsg', ['datetime_utc', 'temp', 'salinity'])
+        gps = read_table(conn, 'gps', ['datetime_utc', 'latitude', 'longitude'])
+    except Exception as e:
+        logging.error(f"Error reading tables: {e}")
+        fluoro, ph, tsg, gps = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    finally:
+        conn.close()
     return fluoro, ph, tsg, gps
 
 def resample_raw_data(fluoro, ph, tsg, gps, resample_interval=None):
@@ -183,27 +197,22 @@ def poll_new_records(
 def get_last_summary_timestamp(sqlite_path, summary_table='underway_summary'):
     """
     Get the most recent timestamp from the summary table.
-    
-    Args:
-        sqlite_path: Path to SQLite database
-        summary_table: Name of the summary table
-        
-    Returns:
-        pandas.Timestamp or None if table is empty
     """
-    conn = sqlite3.connect(sqlite_path)
+    try:
+        conn = sqlite3.connect(sqlite_path)
+    except Exception as e:
+        logging.error(f"Error connecting to SQLite database: {e}")
+        return None
     try:
         query = f"SELECT MAX(datetime_utc) FROM {summary_table}"
         result = pd.read_sql_query(query, conn)
         max_timestamp = result.iloc[0, 0]
-        
         if max_timestamp is not None:
-            # Convert from Unix timestamp to pandas datetime
             return pd.to_datetime(max_timestamp, unit='s')
         else:
             return None
     except Exception as e:
-        print(f"Warning: Could not get last timestamp from {summary_table}: {e}")
+        logging.error(f"Could not get last timestamp from {summary_table}: {e}")
         return None
     finally:
         conn.close()
@@ -211,29 +220,27 @@ def get_last_summary_timestamp(sqlite_path, summary_table='underway_summary'):
 def load_sqlite_tables_after_timestamp(sqlite_path, after_timestamp=None):
     """
     Load raw tables from SQLite, optionally filtering for records after a timestamp.
-    
-    Args:
-        sqlite_path: Path to SQLite database
-        after_timestamp: Only return records after this timestamp (if None, returns all)
-        
-    Returns: 
-        fluoro, ph, tsg, gps DataFrames
     """
-    conn = sqlite3.connect(sqlite_path)
-    
+    try:
+        conn = sqlite3.connect(sqlite_path)
+    except Exception as e:
+        logging.error(f"Error connecting to SQLite database: {e}")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     # Prepare WHERE clause if timestamp filtering is needed
     where_clause = ""
     if after_timestamp is not None:
-        # Convert pandas timestamp to Unix timestamp for comparison
         unix_timestamp = int(after_timestamp.timestamp())
         where_clause = f" WHERE datetime_utc > {unix_timestamp}"
-    
-    fluoro = read_table_with_filter(conn, 'rhodamine', ['datetime_utc','rho_ppb'], where_clause)
-    ph = read_table_with_filter(conn, 'ph', ['datetime_utc', 'vrse', 'ph_total'], where_clause)
-    tsg = read_table_with_filter(conn, 'tsg', ['datetime_utc', 'temp', 'salinity'], where_clause)
-    gps = read_table_with_filter(conn, 'gps', ['datetime_utc', 'latitude', 'longitude'], where_clause)
-    
-    conn.close()
+    try:
+        fluoro = read_table_with_filter(conn, 'rhodamine', ['datetime_utc','rho_ppb'], where_clause)
+        ph = read_table_with_filter(conn, 'ph', ['datetime_utc', 'vrse', 'ph_total'], where_clause)
+        tsg = read_table_with_filter(conn, 'tsg', ['datetime_utc', 'temp', 'salinity'], where_clause)
+        gps = read_table_with_filter(conn, 'gps', ['datetime_utc', 'latitude', 'longitude'], where_clause)
+    except Exception as e:
+        logging.error(f"Error reading tables after timestamp: {e}")
+        fluoro, ph, tsg, gps = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    finally:
+        conn.close()
     return fluoro, ph, tsg, gps
 
 def read_table_with_filter(conn, table, columns, where_clause=""):
@@ -241,7 +248,11 @@ def read_table_with_filter(conn, table, columns, where_clause=""):
     Read a table with optional WHERE filter.
     """
     query = f"SELECT {', '.join(columns)} FROM {table}{where_clause}"
-    df = pd.read_sql_query(query, conn)
+    try:
+        df = pd.read_sql_query(query, conn)
+    except Exception as e:
+        logging.error(f"Error reading table '{table}' with filter: {e}")
+        return pd.DataFrame(columns=columns)
     # Convert integer timestamps to datetime if needed
     if 'datetime_utc' in df.columns and df['datetime_utc'].dtype in ['int64', 'int32']:
         df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], unit='s')
@@ -404,30 +415,39 @@ def process_raw_data_incremental(
 def write_resampled_to_sqlite(df, sqlite_path, output_table):
     """
     Write resampled DataFrame to the underway_summary table in SQLite with integer datetime_utcs.
-
-    Args:
-        df: DataFrame with columns: datetime_utc, lat, lon, rhodamine, ph, temp, salinity, ph_ma
-        sqlite_path: Path to SQLite database
-        output_table: Name of the output table in SQLite
     """
-    # Convert datetime timestamps to Unix timestamps (integers)
     df_copy = df.copy()
     if pd.api.types.is_datetime64_any_dtype(df_copy['datetime_utc']):
-        df_copy['datetime_utc'] = df_copy['datetime_utc'].astype('int64') // 10**9  # Convert to Unix timestamp
-    
-    conn = sqlite3.connect(sqlite_path)
+        df_copy['datetime_utc'] = df_copy['datetime_utc'].astype('int64') // 10**9
     try:
-        # Insert data into output_table
-        df_copy.to_sql(output_table, conn, if_exists='append', index=False)
-        print(f"Successfully wrote {len(df_copy)} resampled records to {output_table} table")
+        conn = sqlite3.connect(sqlite_path)
     except Exception as e:
-        print(f"Error writing to {output_table} table: {e}")
+        logging.error(f"Error connecting to SQLite database for writing: {e}")
+        return
+    try:
+        df_copy.to_sql(output_table, conn, if_exists='append', index=False)
+        logging.info(f"Successfully wrote {len(df_copy)} resampled records to {output_table} table")
+    except Exception as e:
+        logging.error(f"Error writing to {output_table} table: {e}")
     finally:
         conn.close()
 
 def main():
     import argparse
     config = get_config()
+    log_path = config.get('log_path', None)
+    log_handlers = [logging.StreamHandler()]
+    if log_path:
+        try:
+            file_handler = logging.FileHandler(log_path)
+            log_handlers.append(file_handler)
+        except Exception as e:
+            print(f"Warning: Could not set up file logging to {log_path}: {e}")
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s %(message)s',
+        handlers=log_handlers
+    )
     parser = argparse.ArgumentParser(description="Resample and combine SQLite sensor tables, write to CSV, Parquet, and summary table.")
     parser.add_argument('--sqlite-path', type=str, default=config.get('db_path'), help='Path to SQLite database (default from config)')
     parser.add_argument('--csv-path', type=str, help='Path to CSV output file (default: sqlite_path base + _resampled.csv)')
@@ -443,11 +463,11 @@ def main():
     args = parser.parse_args()
 
     if not args.sqlite_path:
-        print("Error: SQLite database path not specified in config or command line")
+        logging.error("SQLite database path not specified in config or command line")
         return
 
     if args.poll:
-        print("Polling mode enabled. Press Ctrl+C to stop.")
+        logging.info("Polling mode enabled. Press Ctrl+C to stop.")
         last_ts = None
         try:
             for new_df in poll_new_records(
@@ -458,24 +478,26 @@ def main():
                 stop_after=args.stop_after
             ):
                 if not new_df.empty:
-                    print(f"Writing {len(new_df)} new records...")
+                    logging.info(f"Writing {len(new_df)} new records...")
                     write_resampled_to_sqlite(new_df, args.sqlite_path, output_table=args.table)
-                    
                     # Write to files if requested
                     if args.csv:
                         csv_path = args.csv_path or args.sqlite_path.replace('.sqlite', '_resampled.csv').replace('.db', '_resampled.csv')
-                        file_writers.to_csv(new_df, csv_path, mode='a', header=not os.path.exists(csv_path))
-                    
+                        try:
+                            file_writers.to_csv(new_df, csv_path, mode='a', header=not os.path.exists(csv_path))
+                        except Exception as e:
+                            logging.error(f"Error writing to CSV: {e}")
                     if args.parquet:
                         parquet_path = args.parquet_path or args.sqlite_path.replace('.sqlite', '_resampled.parquet').replace('.db', '_resampled.parquet')
                         partition_hours = config.get('partition_hours', None)
-                        file_writers.to_parquet(new_df, parquet_path, append=True, partition_hours=partition_hours)
-                    
+                        try:
+                            file_writers.to_parquet(new_df, parquet_path, append=True, partition_hours=partition_hours)
+                        except Exception as e:
+                            logging.error(f"Error writing to Parquet: {e}")
                     last_ts = new_df['datetime_utc'].max()
         except KeyboardInterrupt:
-            print("\nStopped polling.")
+            logging.info("Stopped polling.")
     else:
-        # Use the new incremental processing function
         df = process_raw_data_incremental(
             sqlite_path=args.sqlite_path,
             resample_interval=args.resample,
@@ -486,11 +508,10 @@ def main():
             parquet_path=args.parquet_path,
             replace_all=args.replace_all
         )
-        
         if not df.empty:
-            print(f"Successfully processed {len(df)} records")
+            logging.info(f"Successfully processed {len(df)} records")
         else:
-            print("No records to process")
+            logging.info("No records to process")
 
 if __name__ == "__main__":
     main()

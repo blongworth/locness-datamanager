@@ -3,6 +3,7 @@
 db_path= "C:/Users/CSL 2/Documents/LOCNESS_data/database/locness.db"
 cloud_path = "G:/Shared drives/locness/synthetic_data/"
 basename = "fake-data"
+log_path = "C:/Users/CSL 2/Documents/LOCNESS_data/logs/"
 
 [resampling]
 res_int = "2s" # resampling interval in time units, e.g., "2s" for 2 seconds
