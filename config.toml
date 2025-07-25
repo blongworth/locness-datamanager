@@ -6,6 +6,7 @@ basename = "fake-data"
 log_path = "C:/Users/CSL 2/Documents/LOCNESS_data/logs/"
 
 [resampling]
+poll_interval = 10 # frequency to poll and process raw data in seconds not used yet
 res_int = "2s" # resampling interval in time units, e.g., "2s" for 2 seconds
 ph_ma_window = 120  # window in seconds for ph moving average
 ph_freq = 0.1  # frequency in Hz for ph moving average
@@ -14,6 +15,7 @@ ph_k2 = 0.0  # k2 value for ph correction
 
 [output]
 partition_hours = 12  # hours to partition the data for writing, not used yet
+backup_interval = 24  # hours to backup the database, not used yet
 
 [synthetic_data]
 time = 60 # time in seconds of synthetic data to generate

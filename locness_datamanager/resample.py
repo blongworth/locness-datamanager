@@ -9,6 +9,8 @@ from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
 from isfetphcalc import calc_ph
 
+# TODO: unified main to poll, resample, write, backup
+# TODO: Start main from shortcut
 # TODO: Use mean for resampling?
 # TODO: add error handling for database connection and queries
 # TODO: use time bucket resampling in sqlite (test speed)
@@ -164,7 +166,7 @@ def load_and_resample_sqlite(sqlite_path, resample_interval=None):
 def poll_new_records(
     sqlite_path,
     last_timestamp: Optional[pd.Timestamp] = None,
-    poll_interval: float = 2.0,
+    poll_interval: int = 10,
     resample_interval: str = '2s',
     stop_after: Optional[float] = None
 ):
@@ -458,7 +460,7 @@ def main():
     parser.add_argument('--parquet', action='store_true', help='Write to Parquet file')
     parser.add_argument('--replace-all', action='store_true', help='Reprocess all raw data and replace summary table (default: incremental)')
     parser.add_argument('--poll', action='store_true', help='Continuously poll for new records')
-    parser.add_argument('--interval', type=float, default=2.0, help='Polling interval in seconds (default: 2.0)')
+    parser.add_argument('--interval', type=float, default=config.get('poll_interval', 10), help='Polling interval in seconds (default: 2.0)')
     parser.add_argument('--stop-after', type=float, help='Stop polling after this many seconds')
     args = parser.parse_args()
 
