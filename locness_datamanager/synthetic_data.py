@@ -394,6 +394,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Generate and process synthetic sensor data.")
     parser.add_argument("--path", type=str, default=config.get("cloud_path", "."), help="Output directory for generated files")
     parser.add_argument("--basename", type=str, default=config.get("basename", "synthetic_data"), help="Base name for output files")
+    parser.add_argument("--db_path", type=str, default=config.get("db_path", "./locness.db"), help="Path to SQLite database")
     parser.add_argument("--time", type=int, default=int(config.get("time", 60)), help="Duration of data to generate in seconds (per batch)")
     parser.add_argument("--resample-interval", type=str, default=config.get("res_int", "2s"), help="Resampling interval (e.g., '2s')")
     parser.add_argument("--csv", action="store_true", default=False, help="Write resampled data to CSV")
@@ -412,7 +413,7 @@ def main():
         sensor_data = generate_time_based_sensor_data(
             duration_seconds=args.time,
         )
-        raw_sqlite_file = f"{basepath}.sqlite"
+        raw_sqlite_file = args.db_path
         print(f"Writing raw sensor data to {raw_sqlite_file}...")
         write_to_raw_tables(
             rhodamine_df=sensor_data['rhodamine'],
