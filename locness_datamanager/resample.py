@@ -397,6 +397,9 @@ def process_raw_data_incremental(
                     conn.execute(f"UPDATE {summary_table} SET {set_clause} WHERE datetime_utc = {dt_unix}")
             conn.commit()
 
+    # TODO: Incorrect ph averages written to files
+    # TODO: Separate file writing, handle only DB write when resampling
+    
     # Optionally write to CSV
     if write_csv:
         print(f"Writing to CSV: {csv_path}")

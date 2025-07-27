@@ -274,3 +274,30 @@ def test_process_raw_data_incremental_no_new_data(
     )
     assert result.empty
     assert not mock_write_sqlite.called
+
+
+def test_write_resampled_to_sqlite_unique_constraint_error(capfd):
+    import sqlite3 as _sqlite3
+    df = pd.DataFrame({
+        'datetime_utc': pd.to_datetime(['2023-01-01 00:00:00']),
+        'latitude': [10],
+        'longitude': [20],
+        'rho_ppb': [1.0],
+        'ph_total': [7.0],
+        'vrse': [0.1],
+        'temp': [20.0],
+        'salinity': [35.0]
+    })
+    # Patch pandas.DataFrame.to_sql to raise IntegrityError
+    with patch('sqlite3.connect') as mock_connect:
+        conn = MagicMock()
+        mock_connect.return_value = conn
+        # Patch to_sql to raise IntegrityError
+        def raise_integrity_error(*args, **kwargs):
+            raise _sqlite3.IntegrityError('UNIQUE constraint failed: underway_summary.datetime_utc')
+        conn.__enter__.return_value = conn
+        with patch('pandas.DataFrame.to_sql', side_effect=raise_integrity_error):
+            from locness_datamanager.resample import write_resampled_to_sqlite
+            write_resampled_to_sqlite(df, 'dummy.sqlite', 'underway_summary')
+            out, _ = capfd.readouterr()
+            assert 'Error writing to underway_summary table: UNIQUE constraint failed' in out
