@@ -3,20 +3,23 @@
 db_path= "C:/Users/CSL 2/Documents/LOCNESS_data/database/locness.db"
 #db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
 cloud_path = "G:/Shared drives/locness/synthetic_data/"
-#cloud_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/"
+#cloud_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/synthetic_data/:"
 basename = "fake-data"
 log_path = "C:/Users/CSL 2/Documents/LOCNESS_data/logs/"
 
 [resampling]
 poll_interval = 10 # frequency to poll and process raw data in seconds not used yet
-res_int = "2s" # resampling interval in time units, e.g., "2s" for 2 seconds
+res_int = "10s" # resampling interval in time units, e.g., "2s" for 2 seconds
 ph_ma_window = 120  # window in seconds for ph moving average
-ph_freq = 0.1  # frequency in Hz for ph moving average
-ph_k0 = 0.0  # k0 value for ph correction
-ph_k2 = 0.0  # k2 value for ph correction
+ph_freq = 0.5  # frequency in Hz for ph moving average
+# pH calibration coefficients
+# mFET SB10
+ph_k0 = -1.39469
+ph_k2 = -0.00107
 
 [output]
-partition_hours = 12  # hours to partition the data for writing, not used yet
+output_interval = 60  # frequency to write data to the resampled output in seconds not used yet
+partition_hours = 6  # hours to partition the data for writing, not used yet
 backup_interval = 24  # hours to backup the database, not used yet
 
 [synthetic_data]
