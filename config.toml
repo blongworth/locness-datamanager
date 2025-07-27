@@ -1,7 +1,9 @@
 
 [paths]
 db_path= "C:/Users/CSL 2/Documents/LOCNESS_data/database/locness.db"
+#db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
 cloud_path = "G:/Shared drives/locness/synthetic_data/"
+#cloud_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/"
 basename = "fake-data"
 log_path = "C:/Users/CSL 2/Documents/LOCNESS_data/logs/"
 
