@@ -1,3 +1,51 @@
+"""
+resample.py
+This module provides functions for loading, resampling, and processing raw sensor data from a SQLite database,
+combining multiple sensor tables (rhodamine, pH, TSG, GPS), and writing processed results to summary tables and files.
+
+Order of Operations:
+1. Load raw sensor data from SQLite tables.
+2. Resample and align data to a common time interval.
+3. Compute additional fields (e.g., corrected pH).
+4. Write processed data to summary table
+TODO: move ph averaging to dashboard?
+5. Read necessary summary data for ph moving averages.
+6. Compute final moving averages and write to summary table.
+TODO: separate file writing, handle only DB write when resampling
+7. Optionally write to CSV and Parquet files.
+
+TODO: massively simplify this module
+Key Features:
+- Load raw sensor data tables from SQLite into pandas DataFrames.
+- Resample and align data from multiple sensors to a common time interval.
+- Compute corrected pH values and moving averages.
+- Incrementally update a summary table with new processed records.
+- Optionally write processed data to CSV and Parquet files.
+- Support for polling the database for new records in real time.
+- Command-line interface for batch or polling operation.
+
+Functions:
+keep:
+- read_table: Read a table from SQLite into a DataFrame.
+- load_sqlite_tables: Load all raw sensor tables from SQLite.
+- resample_raw_data: Resample and join sensor tables to a common interval.
+- add_corrected_ph: Compute and add a corrected pH column.
+discard?:
+- add_ph_moving_average: Add moving average columns for pH.
+refactor:
+- add_computed_fields: Add all computed fields to the DataFrame.
+- load_and_resample_sqlite: Load, resample, and compute fields for all sensor data.
+- poll_new_records: Poll the database for new records and yield processed DataFrames.
+- get_last_summary_timestamp: Get the latest timestamp from the summary table.
+- load_sqlite_tables_after_timestamp: Load raw tables with optional timestamp filtering.
+- read_table_with_filter: Read a table with an optional WHERE clause.
+- process_raw_data_incremental: Main function to process and update summary table incrementally or in full.
+- write_resampled_to_sqlite: Write processed DataFrame to the summary table in SQLite.
+- main: Command-line entry point for processing or polling.
+Configuration:
+- Uses a config module to obtain database paths, resampling intervals, and other parameters.
+"""
+
 import sqlite3
 import pandas as pd
 import time
@@ -8,6 +56,10 @@ import logging
 from locness_datamanager.config import get_config
 from locness_datamanager import file_writers
 from isfetphcalc import calc_ph
+
+
+
+
 
 # TODO: unified main to poll, resample, write, backup
 # TODO: Start main from shortcut
