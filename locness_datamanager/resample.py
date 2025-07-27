@@ -349,9 +349,9 @@ def process_raw_data_incremental(
     
     # Set default file paths if not provided
     if csv_path is None:
-        csv_path = sqlite_path.replace('.sqlite', '_resampled.csv').replace('.db', '_resampled.csv')
+        csv_path = sqlite_path.replace('.sqlite', '.csv').replace('.db', '.csv')
     if parquet_path is None:
-        parquet_path = sqlite_path.replace('.sqlite', '_resampled.parquet').replace('.db', '_resampled.parquet')
+        parquet_path = sqlite_path.replace('.sqlite', '.parquet').replace('.db', '.parquet')
     
     if replace_all:
         print("Processing ALL raw data and replacing summary table...")
@@ -507,9 +507,8 @@ def main():
     )
     parser = argparse.ArgumentParser(description="Resample and combine SQLite sensor tables, write to CSV, Parquet, and summary table.")
     parser.add_argument('--sqlite-path', type=str, default=config.get('db_path'), help='Path to SQLite database (default from config)')
-    parser.add_argument('--csv-path', type=str, help='Path to CSV output file (default: sqlite_path base + _resampled.csv)')
-    parser.add_argument('--parquet-path', type=str, help='Path to Parquet output file (default: sqlite_path base + _resampled.parquet)')
-    parser.add_argument('--table', type=str, default='underway_summary', help='Summary table name (default: underway_summary)')
+    parser.add_argument('--csv-path', type=str, help='Path to CSV output file')
+    parser.add_argument('--parquet-path', type=str, help='Path to Parquet output file')
     parser.add_argument('--resample', type=str, default=config.get('res_int', '2s'), help='Resample interval (default from config or 2s)')
     parser.add_argument('--csv', action='store_true', help='Write to CSV file')
     parser.add_argument('--parquet', action='store_true', help='Write to Parquet file')
@@ -536,16 +535,16 @@ def main():
             ):
                 if not new_df.empty:
                     logging.info(f"Writing {len(new_df)} new records...")
-                    write_resampled_to_sqlite(new_df, args.sqlite_path, output_table=args.table)
+                    write_resampled_to_sqlite(new_df, args.sqlite_path, output_table='underway_summary')
                     # Write to files if requested
                     if args.csv:
-                        csv_path = args.csv_path or args.sqlite_path.replace('.sqlite', '_resampled.csv').replace('.db', '_resampled.csv')
+                        csv_path = args.csv_path or args.sqlite_path.replace('.sqlite', '.csv').replace('.db', '.csv')
                         try:
                             file_writers.to_csv(new_df, csv_path, mode='a', header=not os.path.exists(csv_path))
                         except Exception as e:
                             logging.error(f"Error writing to CSV: {e}")
                     if args.parquet:
-                        parquet_path = args.parquet_path or args.sqlite_path.replace('.sqlite', '_resampled.parquet').replace('.db', '_resampled.parquet')
+                        parquet_path = args.parquet_path or args.sqlite_path.replace('.sqlite', '.parquet').replace('.db', '.parquet')
                         partition_hours = config.get('partition_hours', None)
                         try:
                             file_writers.to_parquet(new_df, parquet_path, append=True, partition_hours=partition_hours)

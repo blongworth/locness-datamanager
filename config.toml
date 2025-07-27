@@ -1,11 +1,12 @@
 
 [paths]
-db_path= "C:/Users/CSL 2/Documents/LOCNESS_data/database/locness.db"
-#db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
-cloud_path = "G:/Shared drives/locness/synthetic_data/"
-#cloud_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/synthetic_data/:"
-basename = "fake-data"
-log_path = "C:/Users/CSL 2/Documents/LOCNESS_data/logs/"
+# add csv_path to write summary csv (not used yet)
+#db_path= "C:/Users/CSL 2/Documents/LOCNESS_data/database/locness.db"
+db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
+#parquet_path = "G:/Shared drives/locness/synthetic_data/locness.parquet"
+parquet_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/synthetic_data/locness.parquet"
+#log_path = "C:/Users/CSL 2/Documents/LOCNESS_data/logs/"
+log_path = "/Users/brett/Projects/locness/locness-datamanager/data/"
 
 [resampling]
 poll_interval = 10 # frequency to poll and process raw data in seconds not used yet
@@ -19,8 +20,9 @@ ph_k2 = -0.00107
 
 [output]
 output_interval = 60  # frequency to write data to the resampled output in seconds not used yet
-partition_hours = 6  # hours to partition the data for writing, not used yet
+partition_hours = 6  # hours to partition the data for writing
 backup_interval = 24  # hours to backup the database, not used yet
+backup_path = "/Users/brett/Projects/locness/locness-datamanager/data/backup"  # path to backup the database, not used yet
 
 [synthetic_data]
 time = 60 # time in seconds of synthetic data to generate

@@ -387,33 +387,25 @@ def generate_time_based_sensor_data(duration_seconds, base_lat=42.5, base_lon=-6
 
 # Argument parsing: load defaults from config.toml, override with CLI
 def parse_args():
-    from locness_datamanager.config import get_config
-    import argparse
     config = get_config()
 
     parser = argparse.ArgumentParser(description="Generate and process synthetic sensor data.")
-    parser.add_argument("--path", type=str, default=config.get("cloud_path", "."), help="Output directory for generated files")
-    parser.add_argument("--basename", type=str, default=config.get("basename", "synthetic_data"), help="Base name for output files")
     parser.add_argument("--db_path", type=str, default=config.get("db_path", "./locness.db"), help="Path to SQLite database")
+    parser.add_argument("--parquet_path", type=str, default=config.get("parquet_path", "./locness.parquet"), help="Path to Parquet file")
     parser.add_argument("--time", type=int, default=int(config.get("time", 60)), help="Duration of data to generate in seconds (per batch)")
     parser.add_argument("--resample-interval", type=str, default=config.get("res_int", "2s"), help="Resampling interval (e.g., '2s')")
-    parser.add_argument("--csv", action="store_true", default=False, help="Write resampled data to CSV")
-    parser.add_argument("--parquet", action="store_true", default=True, help="Write resampled data to Parquet")
-    parser.add_argument("--sqlite", action="store_true", default=False, help="Write resampled data to external SQLite")
     parser.add_argument("--continuous", action="store_true", default=config.get("continuous", False), help="Run in continuous mode (loop)")
     args = parser.parse_args()
     return args
 
 def main():
     args = parse_args()
-    basepath = os.path.join(args.path, args.basename)
 
     # Only use this module for raw data generation and writing
-    def generate_and_write_raw():
+    def generate_and_write_raw(raw_sqlite_file):
         sensor_data = generate_time_based_sensor_data(
             duration_seconds=args.time,
         )
-        raw_sqlite_file = args.db_path
         print(f"Writing raw sensor data to {raw_sqlite_file}...")
         write_to_raw_tables(
             rhodamine_df=sensor_data['rhodamine'],
@@ -422,16 +414,16 @@ def main():
             gps_df=sensor_data['gps'],
             sqlite_path=raw_sqlite_file
         )
-        return raw_sqlite_file
 
     # Use resample module's process_raw_data_incremental for resampling and output
-    def resample_and_output(raw_sqlite_file):
+    def resample_and_output(raw_sqlite_file, parquet_path, resample_interval):
         process_raw_data_incremental(
             sqlite_path=raw_sqlite_file,
-            resample_interval=args.resample_interval,
+            resample_interval=resample_interval,
             summary_table="underway_summary",
-            write_csv=args.csv,
-            write_parquet=args.parquet,
+            write_csv=False,
+            write_parquet=True,
+            parquet_path=parquet_path
         )
         print(f"Resampled data written to underway_summary table in {raw_sqlite_file}")
 
@@ -440,8 +432,8 @@ def main():
         try:
             while True:
                 print(f"Generating {args.time} seconds of sensor data...")
-                raw_sqlite_file = generate_and_write_raw()
-                resample_and_output(raw_sqlite_file)
+                generate_and_write_raw(raw_sqlite_file=args.db_path)
+                resample_and_output(raw_sqlite_file=args.db_path, parquet_path=args.parquet_path, resample_interval=args.resample_interval)
                 print(f"Sleeping {args.time} seconds before next batch...")
                 time.sleep(args.time)
         except KeyboardInterrupt:
@@ -449,8 +441,8 @@ def main():
             sys.exit(0)
     else:
         print(f"Generating {args.time} seconds of sensor data...")
-        raw_sqlite_file = generate_and_write_raw()
-        resample_and_output(raw_sqlite_file)
+        generate_and_write_raw(raw_sqlite_file=args.db_path)
+        resample_and_output(raw_sqlite_file=args.db_path, parquet_path=args.parquet_path, resample_interval=args.resample_interval)
         print("Data generation complete.")
 
 
