@@ -1,64 +1,92 @@
 import time
 import logging
 from locness_datamanager.config import get_config
-from locness_datamanager.resample import resample_data, write_resampled_data_to_sqlite
-from locness_datamanager.synthetic_data import add_ph_moving_average
+from locness_datamanager.resample import process_raw_data_incremental
+from locness_datamanager.resample_summary import process_summary_incremental
 from locness_datamanager.backup_db import DatabaseBackup
-import sqlite3
 import os
 
 ''' 
 This script should be the main entry point for the data manager.
 Use the functions in locness_datamanager to:
 1. Check that the database is set up correctly.
-2. Poll for new data at regular intervals.
-3. Resample the data.
-4. Add calculated filters (e.g., pH moving average).
-5. Write the resampled data to a summary table.
-6. Write to output file(s) (e.g., parquet)
-7. Periodically back up the database.
-8. Backup/rotate raw csv files.
+
+2. Process raw data:
+   - Poll for new data at regular intervals.
+   - Resample the data.
+   - Add calculated fields (e.g., pH from temp and salinity).
+   - Add calculated filters (e.g., pH moving average).
+   - Write the resampled data to a summary table.
+
+3. Process output:
+    - Resample the summary data at regular intervals.
+    - Write to output file(s) (e.g., parquet, csv).
+
+4. Periodically back up the database.
+5. Backup/rotate raw csv files.
 '''
-# TODO: move these constants to config file
-POLL_INTERVAL = 60  # seconds
-BACKUP_INTERVAL = 3600  # seconds
 
 
-def poll_and_process():
-
-
+def poll_and_process(
+    db_path: str = None,
+    db_poll_interval: int = 10,
+    db_resample_interval: str = '10s',
+    parquet_path: str = None,
+    parquet_poll_interval: int = 60,
+    parquet_resample_interval: str = '60s',
+    partition_hours: int = 6,
+    backup_interval: int = 3600,
+    backup_manager: DatabaseBackup = None,
+    csv_path: str = None,
+):
+    last_parquet = time.time()
+    last_backup = time.time()
     while True:
-        logging.info("Polling for new data...")
-        # 1. Poll for new data (example: get all new rows since last processed)
+        logging.info("Processing new data...")
+        # use main resample.py interval function
+        # TODO: will not calculate pH moving average correctly if db_poll_interval < ph_ma_window
+        process_raw_data_incremental(
+            sqlite_path=db_path,
+            resample_interval=db_resample_interval,
+            # should pass ph config info?
+        )
 
-        # 2. Resample data
-        logging.info("Resampling data...")
-        df_resampled = resample_data(rows)
+        # if time to write parquet
+        if time.time() - last_parquet > parquet_poll_interval:
+            logging.info("Writing resampled Parquet data...")
+            last_parquet = time.time()
+            # use main resample_summary interval function
+            process_summary_incremental(
+                sqlite_path=db_path,
+                resample_interval=parquet_resample_interval,
+                parquet_path=parquet_path,
+                partition_hours=partition_hours,
+                csv_path=csv_path,
+            )
 
-        # 3. Add pH moving average
-        logging.info("Adding pH moving average...")
-        df_resampled = add_ph_moving_average(df_resampled, window=ph_ma_window, freq=ph_freq)
-
-        # 4. Write to summary table
-        logging.info(f"Writing to summary table: {summary_table}")
-        write_resampled_data_to_sqlite(db_path, output_table=summary_table)
-
-        # 5. Update file outputs (example: write CSV)
-        logging.info("Updating file outputs...")
-        df_resampled.to_csv(f"{summary_table}.csv", index=False)
-
-        # 6. Periodically back up the database
-        if time.time() - last_backup > BACKUP_INTERVAL:
+        # if time to backup
+        if time.time() - last_backup > backup_interval:
             logging.info("Backing up database...")
             backup_manager.create_backup()
             last_backup = time.time()
 
-        logging.info(f"Sleeping for {POLL_INTERVAL} seconds...")
-        time.sleep(POLL_INTERVAL)
+        logging.info(f"Sleeping for {db_poll_interval} seconds...")
+        time.sleep(db_poll_interval)
 
 def main():
     config = get_config()
     log_path = config.get('log_path', None)
+    db_path = config.get('db_path', 'data/locness.db')
+    db_poll_interval = config.get('db_poll_interval', 10)
+    db_resample_interval = config.get('db_resample_interval', '10s')
+    parquet_path = config.get('parquet_path', 'data/locness.parquet')
+    parquet_poll_interval = config.get('parquet_poll_interval', 3600)
+    parquet_resample_interval = config.get('parquet_resample_interval', '60s')
+    partition_hours = config.get('partition_hours', 6)    
+    csv_path = config.get('csv_path', 'data/locness.csv')
+    backup_path = config.get('backup_path', 'data/backup')
+    backup_interval = config.get('backup_interval', 3600)
+
     log_handlers = [logging.StreamHandler()]
     if log_path:
         try:
@@ -78,13 +106,24 @@ def main():
         return
     # test database configuation
     logging.info("Starting data manager...")
-    backup_manager = DatabaseBackup(db_path, backup_dir=backup_dir)
+    backup_manager = DatabaseBackup(db_path, backup_dir=backup_path)
     while True:
         try:
-            poll_and_process()
+            poll_and_process(
+                db_path=db_path,
+                db_poll_interval=db_poll_interval,
+                db_resample_interval=db_resample_interval,
+                parquet_path=parquet_path,
+                parquet_poll_interval=parquet_poll_interval,
+                parquet_resample_interval=parquet_resample_interval,
+                csv_path=csv_path,
+                partition_hours=partition_hours,
+                backup_manager=backup_manager,
+                backup_interval=backup_interval,
+            )
         except Exception as e:
             logging.error(f"An error occurred: {e}")
-            time.sleep(POLL_INTERVAL)
+            time.sleep(db_poll_interval)  # Wait before retrying
         except KeyboardInterrupt:
             logging.info("Interrupted by user. Shutting down gracefully.")
             break
