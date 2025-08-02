@@ -105,7 +105,6 @@ def main():
         format='%(asctime)s %(levelname)s %(message)s',
         handlers=log_handlers
     )
-    db_path = config.get('db_path')
     # Ensure the database exists
     if not os.path.exists(db_path):
         logging.error(f"Database {db_path} does not exist. Please create it first.")
