@@ -211,8 +211,6 @@ def test_process_raw_data_incremental_incremental_mode():
             sqlite_path=db_path,
             resample_interval='2s',
             summary_table='underway_summary',
-            write_csv=False,
-            write_parquet=False,
             replace_all=False
         )
         assert not result.empty
@@ -245,8 +243,6 @@ def test_process_raw_data_incremental_replace_all():
             sqlite_path=db_path,
             resample_interval='2s',
             summary_table='underway_summary',
-            write_csv=False,
-            write_parquet=False,
             replace_all=True
         )
         assert not result.empty
@@ -268,8 +264,6 @@ def test_process_raw_data_incremental_no_new_data(
         sqlite_path='dummy.sqlite',
         resample_interval='2s',
         summary_table='underway_summary',
-        write_csv=False,
-        write_parquet=False,
         replace_all=False
     )
     assert result.empty

@@ -8,6 +8,8 @@ The module reads from the underway_summary table, resamples using mean aggregati
 and appends new data to output files at regular intervals.
 """
 
+# TODO: write and read datetime as datetime64[us, UTC] in Parquet (timezone aware)
+
 import sqlite3
 import pandas as pd
 import time
