@@ -26,6 +26,7 @@ dev = [
 ]
 
 [project.scripts]
+locness-datamanager = "locness_datamanager.main:main"
 generate = "locness_datamanager.synthetic_data:main"
 setup-sqlite-db = "locness_datamanager.setup_db:setup_sqlite_db"
 backup-db = "locness_datamanager.backup_db:main"

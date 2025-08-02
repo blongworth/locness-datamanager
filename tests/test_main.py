@@ -1,16 +1,16 @@
 import pytest
 from unittest.mock import Mock, patch
 from locness_datamanager.backup_db import DatabaseBackup
-import main
+from locness_datamanager import main
 
 
 class TestPollAndProcess:
     """Test the poll_and_process function"""
     
-    @patch('main.time.sleep')
-    @patch('main.process_summary_incremental')
-    @patch('main.process_raw_data_incremental')
-    @patch('main.time.time')
+    @patch('locness_datamanager.main.time.sleep')
+    @patch('locness_datamanager.main.process_summary_incremental')
+    @patch('locness_datamanager.main.process_raw_data_incremental')
+    @patch('locness_datamanager.main.time.time')
     def test_single_iteration_no_parquet_no_backup(self, mock_time, mock_process_raw, mock_process_summary, mock_sleep):
         """Test a single iteration with no parquet writing or backup"""
         # Mock time to control timing
@@ -60,10 +60,10 @@ class TestPollAndProcess:
         # Verify sleep was called with correct interval
         mock_sleep.assert_called_once_with(db_poll_interval)
 
-    @patch('main.time.sleep')
-    @patch('main.process_summary_incremental')
-    @patch('main.process_raw_data_incremental')
-    @patch('main.time.time')
+    @patch('locness_datamanager.main.time.sleep')
+    @patch('locness_datamanager.main.process_summary_incremental')
+    @patch('locness_datamanager.main.process_raw_data_incremental')
+    @patch('locness_datamanager.main.time.time')
     def test_parquet_writing_triggered(self, mock_time, mock_process_raw, mock_process_summary, mock_sleep):
         """Test that parquet writing is triggered at the right time"""
         # Mock time to trigger parquet writing
@@ -99,10 +99,10 @@ class TestPollAndProcess:
             csv_path='test.csv',
         )
 
-    @patch('main.time.sleep')
-    @patch('main.process_summary_incremental')
-    @patch('main.process_raw_data_incremental')
-    @patch('main.time.time')
+    @patch('locness_datamanager.main.time.sleep')
+    @patch('locness_datamanager.main.process_summary_incremental')
+    @patch('locness_datamanager.main.process_raw_data_incremental')
+    @patch('locness_datamanager.main.time.time')
     def test_backup_triggered(self, mock_time, mock_process_raw, mock_process_summary, mock_sleep):
         """Test that backup is triggered at the right time"""
         # Mock time to trigger backup
@@ -128,10 +128,10 @@ class TestPollAndProcess:
         # Verify backup was called
         backup_manager.create_backup.assert_called_once()
 
-    @patch('main.time.sleep')
-    @patch('main.process_summary_incremental')
-    @patch('main.process_raw_data_incremental')
-    @patch('main.time.time')
+    @patch('locness_datamanager.main.time.sleep')
+    @patch('locness_datamanager.main.process_summary_incremental')
+    @patch('locness_datamanager.main.process_raw_data_incremental')
+    @patch('locness_datamanager.main.time.time')
     def test_both_parquet_and_backup_triggered(self, mock_time, mock_process_raw, mock_process_summary, mock_sleep):
         """Test when both parquet writing and backup are triggered in same iteration"""
         mock_time.side_effect = [
@@ -161,10 +161,10 @@ class TestPollAndProcess:
         mock_process_summary.assert_called_once()
         backup_manager.create_backup.assert_called_once()
 
-    @patch('main.time.sleep')
-    @patch('main.process_summary_incremental')
-    @patch('main.process_raw_data_incremental')
-    @patch('main.time.time')
+    @patch('locness_datamanager.main.time.sleep')
+    @patch('locness_datamanager.main.process_summary_incremental')
+    @patch('locness_datamanager.main.process_raw_data_incremental')
+    @patch('locness_datamanager.main.time.time')
     def test_custom_resample_intervals(self, mock_time, mock_process_raw, mock_process_summary, mock_sleep):
         """Test that custom resample intervals are passed correctly"""
         mock_time.side_effect = [0, 0, 70, 70, 71, 72]
@@ -194,9 +194,9 @@ class TestPollAndProcess:
 
     def test_default_parameters(self):
         """Test that default parameters are set correctly"""
-        with patch('main.time.sleep') as mock_sleep, \
-             patch('main.process_raw_data_incremental') as mock_process_raw, \
-             patch('main.time.time') as mock_time:
+        with patch('locness_datamanager.main.time.sleep') as mock_sleep, \
+             patch('locness_datamanager.main.process_raw_data_incremental') as mock_process_raw, \
+             patch('locness_datamanager.main.time.time') as mock_time:
             
             mock_time.side_effect = [0, 0, 1, 2, 3]
             mock_sleep.side_effect = KeyboardInterrupt()
@@ -222,11 +222,11 @@ class TestPollAndProcess:
 class TestMain:
     """Test the main function"""
     
-    @patch('main.poll_and_process')
-    @patch('main.DatabaseBackup')
-    @patch('main.os.path.exists')
-    @patch('main.get_config')
-    @patch('main.logging.basicConfig')
+    @patch('locness_datamanager.main.poll_and_process')
+    @patch('locness_datamanager.main.DatabaseBackup')
+    @patch('locness_datamanager.main.os.path.exists')
+    @patch('locness_datamanager.main.get_config')
+    @patch('locness_datamanager.main.logging.basicConfig')
     def test_main_successful_run(self, mock_logging_config, mock_get_config, mock_exists, mock_backup_class, mock_poll):
         """Test successful main function execution"""
         # Mock configuration
@@ -278,11 +278,11 @@ class TestMain:
             ph_freq=0.5,
         )
 
-    @patch('main.poll_and_process')
-    @patch('main.DatabaseBackup')
-    @patch('main.os.path.exists')
-    @patch('main.get_config')
-    @patch('main.logging.basicConfig')
+    @patch('locness_datamanager.main.poll_and_process')
+    @patch('locness_datamanager.main.DatabaseBackup')
+    @patch('locness_datamanager.main.os.path.exists')
+    @patch('locness_datamanager.main.get_config')
+    @patch('locness_datamanager.main.logging.basicConfig')
     def test_main_with_defaults(self, mock_logging_config, mock_get_config, mock_exists, mock_backup_class, mock_poll):
         """Test main function with default config values"""
         # Mock minimal configuration (using defaults)
@@ -313,9 +313,9 @@ class TestMain:
             ph_freq=0.5,
         )
 
-    @patch('main.os.path.exists')
-    @patch('main.get_config')
-    @patch('main.logging.error')
+    @patch('locness_datamanager.main.os.path.exists')
+    @patch('locness_datamanager.main.get_config')
+    @patch('locness_datamanager.main.logging.error')
     def test_main_database_not_exists(self, mock_logging_error, mock_get_config, mock_exists):
         """Test main function when database doesn't exist"""
         mock_config = {'db_path': 'nonexistent.db'}
@@ -328,12 +328,12 @@ class TestMain:
         # Verify error was logged
         mock_logging_error.assert_called_once_with("Database nonexistent.db does not exist. Please create it first.")
 
-    @patch('main.poll_and_process')
-    @patch('main.DatabaseBackup')
-    @patch('main.os.path.exists')
-    @patch('main.get_config')
-    @patch('main.time.sleep')
-    @patch('main.logging.error')
+    @patch('locness_datamanager.main.poll_and_process')
+    @patch('locness_datamanager.main.DatabaseBackup')
+    @patch('locness_datamanager.main.os.path.exists')
+    @patch('locness_datamanager.main.get_config')
+    @patch('locness_datamanager.main.time.sleep')
+    @patch('locness_datamanager.main.logging.error')
     def test_main_exception_handling(self, mock_logging_error, mock_sleep, mock_get_config, mock_exists, mock_backup_class, mock_poll):
         """Test main function exception handling and retry logic"""
         mock_config = {'db_path': 'data/test.db', 'db_poll_interval': 5}
@@ -357,11 +357,11 @@ class TestMain:
         # Verify poll_and_process was called twice (original + retry)
         assert mock_poll.call_count == 2
 
-    @patch('main.poll_and_process')
-    @patch('main.DatabaseBackup')
-    @patch('main.os.path.exists')
-    @patch('main.get_config')
-    @patch('main.logging.info')
+    @patch('locness_datamanager.main.poll_and_process')
+    @patch('locness_datamanager.main.DatabaseBackup')
+    @patch('locness_datamanager.main.os.path.exists')
+    @patch('locness_datamanager.main.get_config')
+    @patch('locness_datamanager.main.logging.info')
     def test_main_keyboard_interrupt_handling(self, mock_logging_info, mock_get_config, mock_exists, mock_backup_class, mock_poll):
         """Test main function KeyboardInterrupt handling"""
         mock_config = {'db_path': 'data/test.db'}
@@ -376,11 +376,11 @@ class TestMain:
         # Verify graceful shutdown message was logged
         mock_logging_info.assert_called_with("Interrupted by user. Shutting down gracefully.")
 
-    @patch('main.poll_and_process')
-    @patch('main.DatabaseBackup')
-    @patch('main.os.path.exists')
-    @patch('main.get_config')
-    @patch('main.logging.basicConfig')
+    @patch('locness_datamanager.main.poll_and_process')
+    @patch('locness_datamanager.main.DatabaseBackup')
+    @patch('locness_datamanager.main.os.path.exists')
+    @patch('locness_datamanager.main.get_config')
+    @patch('locness_datamanager.main.logging.basicConfig')
     def test_main_logging_setup_with_file(self, mock_logging_config, mock_get_config, mock_exists, mock_backup_class, mock_poll):
         """Test logging setup with file handler"""
         mock_config = {
@@ -393,18 +393,18 @@ class TestMain:
         mock_backup_class.return_value = mock_backup_instance
         mock_poll.side_effect = KeyboardInterrupt()
         
-        with patch('main.logging.FileHandler') as mock_file_handler:
+        with patch('locness_datamanager.main.logging.FileHandler') as mock_file_handler:
             mock_file_handler.return_value = Mock()
             main.main()
             
             # Verify file handler was created
             mock_file_handler.assert_called_once_with('/tmp/test.log')
 
-    @patch('main.poll_and_process')
-    @patch('main.DatabaseBackup')
-    @patch('main.os.path.exists')
-    @patch('main.get_config')
-    @patch('main.logging.basicConfig')
+    @patch('locness_datamanager.main.poll_and_process')
+    @patch('locness_datamanager.main.DatabaseBackup')
+    @patch('locness_datamanager.main.os.path.exists')
+    @patch('locness_datamanager.main.get_config')
+    @patch('locness_datamanager.main.logging.basicConfig')
     @patch('builtins.print')
     def test_main_logging_file_error(self, mock_print, mock_logging_config, mock_get_config, mock_exists, mock_backup_class, mock_poll):
         """Test logging setup when file handler creation fails"""
@@ -418,7 +418,7 @@ class TestMain:
         mock_backup_class.return_value = mock_backup_instance
         mock_poll.side_effect = KeyboardInterrupt()
         
-        with patch('main.logging.FileHandler') as mock_file_handler:
+        with patch('locness_datamanager.main.logging.FileHandler') as mock_file_handler:
             mock_file_handler.side_effect = OSError("Permission denied")
             main.main()
             
@@ -444,10 +444,10 @@ class TestMainIntegration:
     def test_imports_successful(self):
         """Test that all required imports are successful"""
         # This test passes if the module imports without error
-        import main
+        from locness_datamanager import main
         assert main is not None
 
-    @patch('main.get_config')
+    @patch('locness_datamanager.main.get_config')
     def test_config_parameters_used(self, mock_get_config):
         """Test that all expected config parameters are accessed"""
         mock_config = {
@@ -469,7 +469,7 @@ class TestMainIntegration:
         }
         mock_get_config.return_value = mock_config
         
-        with patch('main.os.path.exists', return_value=False):
+        with patch('locness_datamanager.main.os.path.exists', return_value=False):
             main.main()
         
         # Verify all expected config keys were accessed
