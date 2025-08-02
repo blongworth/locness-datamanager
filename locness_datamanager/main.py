@@ -6,18 +6,18 @@ from locness_datamanager.resample_summary import process_summary_incremental
 from locness_datamanager.backup_db import DatabaseBackup
 import os
 
-''' 
-This script should be the main entry point for the data manager.
-Use the functions in locness_datamanager to:
-1. Check that the database is set up correctly.
+"""
+Main module for the LOCNESS Data Manager.
 
-2. Process data:
-    - Apply calibrations and calculations (e.g., pH, quality flags).
+Handles periodic processing, resampling, and backup of underway data using configurable parameters.
+Features:
+    - Validates database existence.
+    - Processes and calibrates new data.
+    - Resamples and exports data to Parquet/CSV.
+    - Performs scheduled database backups.
 
-3. Process output:4. Periodically back up the database.
-5. Backup/rotate raw csv files.
-'''
-
+Configuration is loaded via `get_config()`. Run as a script to start the data manager loop.
+"""
 
 def poll_and_process(
     db_path: str = None,
