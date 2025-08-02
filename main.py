@@ -11,18 +11,10 @@ This script should be the main entry point for the data manager.
 Use the functions in locness_datamanager to:
 1. Check that the database is set up correctly.
 
-2. Process raw data:
-   - Poll for new data at regular intervals.
-   - Resample the data.
-   - Add calculated fields (e.g., pH from temp and salinity).
-   - Add calculated filters (e.g., pH moving average).
-   - Write the resampled data to a summary table.
+2. Process data:
+    - Apply calibrations and calculations (e.g., pH, quality flags).
 
-3. Process output:
-    - Resample the summary data at regular intervals.
-    - Write to output file(s) (e.g., parquet, csv).
-
-4. Periodically back up the database.
+3. Process output:4. Periodically back up the database.
 5. Backup/rotate raw csv files.
 '''
 
@@ -38,17 +30,25 @@ def poll_and_process(
     backup_interval: int = 3600,
     backup_manager: DatabaseBackup = None,
     csv_path: str = None,
+    ph_k0: float = 0.0,
+    ph_k2: float = 0.0,
+    ph_ma_window: int = 120,
+    ph_freq: float = 0.5,
 ):
     last_parquet = time.time()
     last_backup = time.time()
     while True:
         logging.info("Processing new data...")
-        # use main resample.py interval function
-        # TODO: will not calculate pH moving average correctly if db_poll_interval < ph_ma_window
+        # Process raw data with pH configuration parameters
         process_raw_data_incremental(
             sqlite_path=db_path,
             resample_interval=db_resample_interval,
-            # should pass ph config info?
+            summary_table='underway_summary',
+            replace_all=False,
+            ph_k0=ph_k0,
+            ph_k2=ph_k2,
+            ph_ma_window=ph_ma_window,
+            ph_freq=ph_freq,
         )
 
         # if time to write parquet
@@ -86,6 +86,12 @@ def main():
     csv_path = config.get('csv_path', 'data/locness.csv')
     backup_path = config.get('backup_path', 'data/backup')
     backup_interval = config.get('backup_interval', 3600)
+    
+    # pH configuration parameters
+    ph_k0 = config.get('ph_k0', 0.0)
+    ph_k2 = config.get('ph_k2', 0.0)
+    ph_ma_window = config.get('ph_ma_window', 120)
+    ph_freq = config.get('ph_freq', 0.5)
 
     log_handlers = [logging.StreamHandler()]
     if log_path:
@@ -120,6 +126,10 @@ def main():
                 partition_hours=partition_hours,
                 backup_manager=backup_manager,
                 backup_interval=backup_interval,
+                ph_k0=ph_k0,
+                ph_k2=ph_k2,
+                ph_ma_window=ph_ma_window,
+                ph_freq=ph_freq,
             )
         except Exception as e:
             logging.error(f"An error occurred: {e}")
