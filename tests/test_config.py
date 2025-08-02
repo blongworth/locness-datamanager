@@ -14,17 +14,28 @@ class TestConfig:
     def test_config_has_required_keys(self):
         """Test that config contains expected keys."""
         config = get_config()
-        
-        # Check for some expected configuration keys
-        expected_keys = ['cloud_path',
-                         'basename',
-                         'num',
-                         'freq',
-                         'continuous',
-                         'ph_ma_window',
-                         'ph_freq',
-                         'partition_hours',
-                         'db_path']
+
+        # Check for all expected configuration keys from config.toml
+        expected_keys = [
+            'db_path',
+            'parquet_path',
+            'log_path',
+            'db_poll_interval',
+            'db_res_int',
+            'ph_ma_window',
+            'ph_freq',
+            'ph_k0',
+            'ph_k2',
+            'output_poll_interval',
+            'output_res_int',
+            'partition_hours',
+            'backup_interval',
+            'backup_path',
+            'time',
+            'num',
+            'freq',
+            'continuous'
+        ]
 
         for key in expected_keys:
             assert key in config, f"Expected key '{key}' not found in config"
