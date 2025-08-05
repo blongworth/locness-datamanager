@@ -58,14 +58,11 @@ from locness_datamanager import file_writers
 from isfetphcalc import calc_ph
 
 
-
-
-
-# TODO: unified main to poll, resample, write, backup
-# TODO: Start main from shortcut
-# TODO: Use mean for resampling?
+# TODO: bugfix: make sure raw data is only processed once
+# TODO: test resampling and ph moving average
 # TODO: add error handling for database connection and queries
 # TODO: use time bucket resampling in sqlite (test speed)
+
 
 def read_table(conn, table, columns):
     query = f"SELECT {', '.join(columns)} FROM {table}"
@@ -104,7 +101,7 @@ def load_sqlite_tables(sqlite_path):
 def resample_raw_data(fluoro, ph, tsg, gps, resample_interval=None):
     """
     Resample each table to the given interval and join into a single DataFrame.
-    If resample_interval is None, get it from config['res_int'].
+    If resample_interval is None, get it from config['db_res_int'].
     If all source DataFrames are empty, return an empty DataFrame with expected columns.
     """
     expected_cols = ['datetime_utc', 'latitude', 'longitude', 'rho_ppb', 'ph_total', 'vrse', 'temp', 'salinity']
@@ -468,7 +465,7 @@ def main():
     parser.add_argument('--sqlite-path', type=str, default=config.get('db_path'), help='Path to SQLite database (default from config)')
     parser.add_argument('--csv-path', type=str, help='Path to CSV output file')
     parser.add_argument('--parquet-path', type=str, help='Path to Parquet output file')
-    parser.add_argument('--resample', type=str, default=config.get('res_int', '2s'), help='Resample interval (default from config or 2s)')
+    parser.add_argument('--resample', type=str, default=config.get('db_res_int', '2s'), help='Resample interval (default from config or 2s)')
     parser.add_argument('--csv', action='store_true', help='Write to CSV file')
     parser.add_argument('--parquet', action='store_true', help='Write to Parquet file')
     parser.add_argument('--replace-all', action='store_true', help='Reprocess all raw data and replace summary table (default: incremental)')

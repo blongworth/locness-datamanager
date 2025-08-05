@@ -19,6 +19,8 @@ Features:
 Configuration is loaded via `get_config()`. Run as a script to start the data manager loop.
 """
 
+# TODO: Start main from shortcut
+
 def poll_and_process(
     db_path: str = None,
     db_poll_interval: int = 10,
@@ -27,7 +29,7 @@ def poll_and_process(
     parquet_poll_interval: int = 60,
     parquet_resample_interval: str = '60s',
     partition_hours: int = 6,
-    backup_interval: int = 3600,
+    backup_interval: float = 12,
     backup_manager: DatabaseBackup = None,
     csv_path: str = None,
     ph_k0: float = 0.0,
@@ -35,6 +37,8 @@ def poll_and_process(
     ph_ma_window: int = 120,
     ph_freq: float = 0.5,
 ):
+    backup_interval_seconds = backup_interval * 3600  # convert hours to seconds
+
     last_parquet = time.time()
     last_backup = time.time()
     while True:
@@ -56,6 +60,7 @@ def poll_and_process(
             logging.info("Writing resampled Parquet data...")
             last_parquet = time.time()
             # use main resample_summary interval function
+            print("csv_path:", csv_path)
             process_summary_incremental(
                 sqlite_path=db_path,
                 resample_interval=parquet_resample_interval,
@@ -65,7 +70,7 @@ def poll_and_process(
             )
 
         # if time to backup
-        if time.time() - last_backup > backup_interval:
+        if time.time() - last_backup > backup_interval_seconds:
             logging.info("Backing up database...")
             backup_manager.create_backup()
             last_backup = time.time()
@@ -75,23 +80,26 @@ def poll_and_process(
 
 def main():
     config = get_config()
-    log_path = config.get('log_path', None)
-    db_path = config.get('db_path', 'data/locness.db')
-    db_poll_interval = config.get('db_poll_interval', 10)
-    db_resample_interval = config.get('db_resample_interval', '10s')
-    parquet_path = config.get('parquet_path', 'data/locness.parquet')
-    parquet_poll_interval = config.get('parquet_poll_interval', 3600)
-    parquet_resample_interval = config.get('parquet_resample_interval', '60s')
-    partition_hours = config.get('partition_hours', 6)    
-    csv_path = config.get('csv_path', 'data/locness.csv')
-    backup_path = config.get('backup_path', 'data/backup')
-    backup_interval = config.get('backup_interval', 3600)
+    print("Using configuration:", config)
+
+    # Load configuration parameters
+    db_path = config.get('db_path')
+    parquet_path = config.get('parquet_path')
+    csv_path = config.get('csv_path')
+    log_path = config.get('log_path')
+    db_poll_interval = config.get('db_poll_interval')
+    db_resample_interval = config.get('db_res_int')
+    parquet_poll_interval = config.get('output_poll_interval')
+    parquet_resample_interval = config.get('output_res_int')
+    partition_hours = config.get('partition_hours')    
+    backup_interval = config.get('backup_interval')
+    backup_path = config.get('backup_path')
     
     # pH configuration parameters
-    ph_k0 = config.get('ph_k0', 0.0)
-    ph_k2 = config.get('ph_k2', 0.0)
-    ph_ma_window = config.get('ph_ma_window', 120)
-    ph_freq = config.get('ph_freq', 0.5)
+    ph_k0 = config.get('ph_k0')
+    ph_k2 = config.get('ph_k2')
+    ph_ma_window = config.get('ph_ma_window')
+    ph_freq = config.get('ph_freq')
 
     log_handlers = [logging.StreamHandler()]
     if log_path:

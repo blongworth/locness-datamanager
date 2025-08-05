@@ -1,4 +1,6 @@
 import pytest
+import sqlite3
+import pandas as pd
 from unittest.mock import Mock, patch
 from locness_datamanager.backup_db import DatabaseBackup
 from locness_datamanager import main
@@ -483,3 +485,68 @@ class TestMainIntegration:
         for key in expected_keys:
             # This verifies the key was accessed from the config
             assert mock_config[key] is not None or key in ['log_path']  # log_path can be None
+            
+    
+class TestDatabaseIntegrity:
+    """Test database integrity and data consistency"""
+    # Add this to `tests/test_main.py`
+
+
+
+    @pytest.fixture
+    def db_connection(self):
+        """Fixture to provide a connection to the test database."""
+        db_path = "data/locness.db"  # Update with the correct test database path
+        conn = sqlite3.connect(db_path)
+        yield conn
+        conn.close()
+
+
+    def test_table_gaps(self, db_connection):
+        """Test that there are no gaps in the datetime_utc column for raw tables."""
+        tables = {
+            "tsg": 1,
+            "rhodamine": 1,
+            "gps": 1,
+            "ph": 2,
+        }
+        for table, interval in tables.items():
+            query = f"""
+            SELECT datetime_utc, 
+                   julianday(LEAD(datetime_utc) OVER (ORDER BY datetime_utc)) - julianday(datetime_utc) AS gap
+            FROM {table};
+            """
+            df = pd.read_sql_query(query, db_connection)
+            gaps = df[df["gap"] > interval / 86400.0]  # Convert seconds to days
+            assert gaps.empty, f"Gaps found in {table} table: {gaps}"
+
+
+    def test_underway_summary_intervals(self, db_connection):
+        """Test that the underway_summary table has entries every 10 seconds."""
+        query = """
+        SELECT datetime_utc, 
+               julianday(LEAD(datetime_utc) OVER (ORDER BY datetime_utc)) - julianday(datetime_utc) AS gap
+        FROM underway_summary;
+        """
+        df = pd.read_sql_query(query, db_connection)
+        gaps = df[df["gap"] > 10 / 86400.0]  # Convert seconds to days
+        assert gaps.empty, f"Gaps found in underway_summary table: {gaps}"
+
+
+    def test_ph_total_running_average(self, db_connection):
+        """Test that the 2-minute running average of ph_total matches ph_total_ma."""
+        query = """
+        SELECT datetime_utc, ph_total, ph_total_ma
+        FROM ph
+        ORDER BY datetime_utc;
+        """
+        df = pd.read_sql_query(query, db_connection)
+        df["datetime_utc"] = pd.to_datetime(df["datetime_utc"])
+        df.set_index("datetime_utc", inplace=True)
+
+        # Calculate 2-minute running average
+        df["calculated_ma"] = df["ph_total"].rolling("2T").mean()
+
+        # Compare calculated running average with ph_total_ma
+        mismatches = df[~df["calculated_ma"].fillna(0).eq(df["ph_total_ma"].fillna(0))]
+        assert mismatches.empty, f"Mismatches found in ph_total_ma: {mismatches}"

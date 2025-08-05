@@ -1,17 +1,17 @@
 
 [paths]
-# add csv_path to write summary csv (not used yet)
 #db_path= "C:/Users/CSL 2/Documents/LOCNESS_data/database/locness.db"
 db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
 #parquet_path = "G:/Shared drives/locness/synthetic_data/locness.parquet"
 parquet_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/synthetic_data/locness.parquet"
+# add csv_path to write summary csv
+csv_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.csv"
 #log_path = "C:/Users/CSL 2/Documents/LOCNESS_data/logs/"
-log_path = "/Users/brett/Projects/locness/locness-datamanager/data/"
+log_path = "/Users/brett/Projects/locness/locness-datamanager/data/datamanager.log"
 
 [resample-db]
-db_poll_interval = 10 # frequency to poll and process raw data in seconds not used yet
-#res_int = "10s" # resampling interval in time units, e.g., "2s" for 2 seconds
-db_res_int = "10s" # resampling interval in time units, e.g., "2s" for 2 seconds
+db_poll_interval = 2 # raw data polling interval in seconds
+db_res_int = "2s" # resampling interval in time units, e.g., "2s" for 2 seconds
 ph_ma_window = 120  # window in seconds for ph moving average
 ph_freq = 0.5  # frequency in Hz for ph moving average
 # pH calibration coefficients
@@ -20,13 +20,13 @@ ph_k0 = -1.39469
 ph_k2 = -0.00107
 
 [resample-output]
-output_poll_interval = 60  # frequency to write data to the resampled output in seconds not used yet
-output_res_int = "60s"  # resampling interval in time units, e.g., "2s" for 2 seconds
+output_poll_interval = 60  # resampled output polling interval in seconds
+output_res_int = "60s"  # resampling interval (time bucket size) in time units, e.g., "2s" for 2 seconds
 partition_hours = 6  # hours to partition the data for writing
 
 [db-backup]
-backup_interval = 24  # hours to backup the database, not used yet
-backup_path = "/Users/brett/Projects/locness/locness-datamanager/data/backup"  # path to backup the database, not used yet
+backup_interval = 0.025  # database backup interval in hours
+backup_path = "/Users/brett/Projects/locness/locness-datamanager/data/backup"  # path to backup the database
 
 [synthetic_data]
 time = 60 # time in seconds of synthetic data to generate

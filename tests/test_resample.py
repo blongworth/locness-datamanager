@@ -185,8 +185,6 @@ def test_resample_tables_with_extra_columns():
 
 
 # --- Tests for incremental raw data processing ---
-import types
-
 def test_process_raw_data_incremental_incremental_mode():
     import tempfile
     import os

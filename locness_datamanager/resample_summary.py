@@ -8,6 +8,7 @@ The module reads from the underway_summary table, resamples using mean aggregati
 and appends new data to output files at regular intervals.
 """
 
+# TODO: resample as first or last instead of mean?
 # TODO: write and read datetime as datetime64[us, UTC] in Parquet (timezone aware)
 
 import sqlite3

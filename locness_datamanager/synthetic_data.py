@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 import argparse
@@ -393,8 +392,9 @@ def parse_args():
     parser.add_argument("--db_path", type=str, default=config.get("db_path", "./locness.db"), help="Path to SQLite database")
     parser.add_argument("--parquet_path", type=str, default=config.get("parquet_path", "./locness.parquet"), help="Path to Parquet file")
     parser.add_argument("--time", type=int, default=int(config.get("time", 60)), help="Duration of data to generate in seconds (per batch)")
-    parser.add_argument("--resample-interval", type=str, default=config.get("res_int", "2s"), help="Resampling interval (e.g., '2s')")
+    parser.add_argument("--resample-interval", type=str, default=config.get("db_res_int", "2s"), help="Resampling interval (e.g., '2s')")
     parser.add_argument("--continuous", action="store_true", default=config.get("continuous", False), help="Run in continuous mode (loop)")
+    parser.add_argument("--process", action="store_true", default=False, help="Process/resample data after generation (default: true)")
     args = parser.parse_args()
     return args
 
@@ -433,7 +433,8 @@ def main():
             while True:
                 print(f"Generating {args.time} seconds of sensor data...")
                 generate_and_write_raw(raw_sqlite_file=args.db_path)
-                resample_and_output(raw_sqlite_file=args.db_path, parquet_path=args.parquet_path, resample_interval=args.resample_interval)
+                if args.process:
+                    resample_and_output(raw_sqlite_file=args.db_path, parquet_path=args.parquet_path, resample_interval=args.resample_interval)
                 print(f"Sleeping {args.time} seconds before next batch...")
                 time.sleep(args.time)
         except KeyboardInterrupt:
@@ -442,7 +443,8 @@ def main():
     else:
         print(f"Generating {args.time} seconds of sensor data...")
         generate_and_write_raw(raw_sqlite_file=args.db_path)
-        resample_and_output(raw_sqlite_file=args.db_path, parquet_path=args.parquet_path, resample_interval=args.resample_interval)
+        if args.process:
+            resample_and_output(raw_sqlite_file=args.db_path, parquet_path=args.parquet_path, resample_interval=args.resample_interval)
         print("Data generation complete.")
 
 
