@@ -7,6 +7,9 @@ credentials.json
 *.duckdb
 *.db*
 *.sqlite
+*.log
+
+.DS_Store
 
 # Python-generated files
 __pycache__/

@@ -1,9 +1,10 @@
 import time
 import logging
 from locness_datamanager.config import get_config
-from locness_datamanager.resample import process_raw_data_incremental
+from locness_datamanager.resample import write_resampled_to_sqlite
 from locness_datamanager.resample_summary import process_summary_incremental
 from locness_datamanager.backup_db import DatabaseBackup
+from locness_datamanager.resampler import PersistentResampler
 import os
 
 """
@@ -39,21 +40,31 @@ def poll_and_process(
 ):
     backup_interval_seconds = backup_interval * 3600  # convert hours to seconds
 
+    # Initialize persistent resampler to avoid duplicate data processing
+    resampler = PersistentResampler(
+        sqlite_path=db_path,
+        resample_interval=db_resample_interval,
+        ph_ma_window=ph_ma_window,
+        ph_freq=ph_freq,
+        ph_k0=ph_k0,
+        ph_k2=ph_k2
+    )
+
     last_parquet = time.time()
     last_backup = time.time()
+    
     while True:
         logging.info("Processing new data...")
-        # Process raw data with pH configuration parameters
-        process_raw_data_incremental(
-            sqlite_path=db_path,
-            resample_interval=db_resample_interval,
-            summary_table='underway_summary',
-            replace_all=False,
-            ph_k0=ph_k0,
-            ph_k2=ph_k2,
-            ph_ma_window=ph_ma_window,
-            ph_freq=ph_freq,
-        )
+        
+        # Process new raw data using persistent resampler
+        new_df = resampler.process_new_data()
+        
+        if not new_df.empty:
+            # Write new data to summary table
+            write_resampled_to_sqlite(new_df, db_path, 'underway_summary')
+            logging.info(f"Wrote {len(new_df)} new records to summary table")
+        else:
+            logging.info("No new data to process")
 
         # if time to write parquet
         if time.time() - last_parquet > parquet_poll_interval:
