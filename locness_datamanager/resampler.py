@@ -145,8 +145,35 @@ class PersistentResampler:
         if all(df.empty for df in raw_data.values()):
             return pd.DataFrame(columns=expected_cols)
         
-        resampled_dfs = []
+        # First, find the overall time range and create a proper time grid
+        all_timestamps = []
+        for df in raw_data.values():
+            if not df.empty and 'datetime_utc' in df.columns:
+                all_timestamps.extend(df['datetime_utc'].tolist())
         
+        if not all_timestamps:
+            return pd.DataFrame(columns=expected_cols)
+        
+        # Create a regular time grid based on the resampling interval
+        min_time = min(all_timestamps)
+        max_time = max(all_timestamps)
+        
+        # Round min_time down to nearest interval boundary
+        resample_freq = pd.Timedelta(self.resample_interval)
+        min_time_rounded = min_time.floor(resample_freq)
+        
+        # Create time grid
+        time_grid = pd.date_range(
+            start=min_time_rounded,
+            end=max_time + resample_freq,
+            freq=self.resample_interval
+        )
+        
+        # Create base DataFrame with the time grid
+        result = pd.DataFrame({'datetime_utc': time_grid})
+        result = result.set_index('datetime_utc')
+        
+        # Resample each table to the time grid
         for table, df in raw_data.items():
             if df.empty or 'datetime_utc' not in df.columns:
                 continue
@@ -156,21 +183,18 @@ class PersistentResampler:
             df_prep = df_prep.drop_duplicates(subset='datetime_utc')
             df_prep = df_prep.set_index('datetime_utc')
             
-            # Resample to common interval using nearest
-            df_resampled = df_prep.resample(self.resample_interval).nearest()
+            # Use simple resampling to the grid
+            df_resampled = df_prep.reindex(time_grid, method='nearest', tolerance=resample_freq)
             
-            if not df_resampled.empty:
-                resampled_dfs.append(df_resampled)
+            # Join to result
+            result = result.join(df_resampled, how='left')
         
-        if not resampled_dfs:
-            return pd.DataFrame(columns=expected_cols)
-        
-        # Join all resampled data on datetime_utc
-        result = resampled_dfs[0]
-        for df in resampled_dfs[1:]:
-            result = result.join(df, how='outer')
-        
+        # Reset index and filter to only times where we have some data
         result = result.reset_index()
+        
+        # Remove rows that are completely empty (no sensor data)
+        data_cols = [col for col in result.columns if col != 'datetime_utc']
+        result = result.dropna(subset=data_cols, how='all')
         
         # Ensure all expected columns exist
         for col in expected_cols:
@@ -290,6 +314,41 @@ class PersistentResampler:
         
         return df
     
+    def validate_resampled_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Validate resampled data to ensure no duplicate timestamps.
+        
+        Args:
+            df: Resampled DataFrame
+            
+        Returns:
+            Validated DataFrame with duplicates removed
+        """
+        if df.empty:
+            return df
+        
+        initial_count = len(df)
+        
+        # Check for and remove duplicate timestamps
+        df_clean = df.drop_duplicates(subset='datetime_utc')
+        
+        if len(df_clean) < initial_count:
+            duplicate_count = initial_count - len(df_clean)
+            logging.warning(f"Removed {duplicate_count} duplicate timestamps from resampled data")
+            
+            # Log some examples of duplicates for debugging
+            duplicates = df[df['datetime_utc'].duplicated(keep=False)]
+            if not duplicates.empty:
+                logging.debug("Duplicate timestamp examples:")
+                for timestamp in duplicates['datetime_utc'].unique()[:3]:  # Show first 3
+                    dup_rows = duplicates[duplicates['datetime_utc'] == timestamp]
+                    logging.debug(f"  Timestamp {timestamp}: {len(dup_rows)} occurrences")
+        
+        # Ensure timestamps are sorted
+        df_clean = df_clean.sort_values('datetime_utc').reset_index(drop=True)
+        
+        return df_clean
+    
     def process_new_data(self) -> pd.DataFrame:
         """
         Process new raw data and return resampled results.
@@ -326,6 +385,9 @@ class PersistentResampler:
         
         # Add moving averages
         df = self.add_ph_moving_averages(df)
+        
+        # Validate the final resampled data
+        df = self.validate_resampled_data(df)
         
         logging.info(f"Generated {len(df)} resampled records")
         
