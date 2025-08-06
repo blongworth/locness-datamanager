@@ -143,6 +143,8 @@ def process_summary_incremental(
     resample_interval: str = '60s',
     parquet_path: Optional[str] = None,
     csv_path: Optional[str] = None,
+    dynamodb_table: Optional[str] = None,
+    dynamodb_region: str = 'us-east-1',
     summary_table: str = 'underway_summary',
     partition_hours: Optional[int] = None
 ) -> pd.DataFrame:
@@ -154,7 +156,10 @@ def process_summary_incremental(
         resample_interval: Resampling interval (e.g., '60s', '5min', '1h')
         parquet_path: Path to Parquet output file (None to skip)
         csv_path: Path to CSV output file (None to skip)
+        dynamodb_table: Name of DynamoDB table to write to (None to skip)
+        dynamodb_region: AWS region for DynamoDB table (default: us-east-1)
         summary_table: Name of the summary table
+        partition_hours: Hours per partition for Parquet files
         
     Returns:
         DataFrame of newly processed records
@@ -173,12 +178,6 @@ def process_summary_incremental(
         if parquet_ts is not None:
             last_timestamp = parquet_ts
             
-    if csv_path:
-        csv_ts = get_last_output_timestamp(csv_path, 'csv')
-        if csv_ts is not None:
-            if last_timestamp is None or csv_ts > last_timestamp:
-                last_timestamp = csv_ts
-    
     if last_timestamp is not None:
         logging.info(f"Last output timestamp: {last_timestamp}")
     else:
@@ -220,6 +219,14 @@ def process_summary_incremental(
         except Exception as e:
             logging.error(f"Error writing to CSV: {e}")
     
+    # Write to DynamoDB if requested
+    if dynamodb_table:
+        logging.info(f"Writing to DynamoDB table: {dynamodb_table}")
+        try:
+            file_writers.to_dynamodb(df_resampled, dynamodb_table, region_name=dynamodb_region)
+        except Exception as e:
+            logging.error(f"Error writing to DynamoDB: {e}")
+    
     logging.info(f"Processing complete. {len(df_resampled)} records processed.")
     return df_resampled
 
@@ -230,6 +237,8 @@ def poll_and_resample(
     resample_interval: str = '60s',
     parquet_path: Optional[str] = None,
     csv_path: Optional[str] = None,
+    dynamodb_table: Optional[str] = None,
+    dynamodb_region: str = 'us-east-1',
     summary_table: str = 'underway_summary',
     stop_after: Optional[float] = None
 ):
@@ -242,6 +251,8 @@ def poll_and_resample(
         resample_interval: Resampling interval (e.g., '60s', '5min', '1h') 
         parquet_path: Path to Parquet output file (None to skip)
         csv_path: Path to CSV output file (None to skip)
+        dynamodb_table: Name of DynamoDB table to write to (None to skip)
+        dynamodb_region: AWS region for DynamoDB table
         summary_table: Name of the summary table
         stop_after: Stop polling after this many seconds (None = run forever)
     """
@@ -253,6 +264,8 @@ def poll_and_resample(
         logging.info(f"Parquet output: {parquet_path}")
     if csv_path:
         logging.info(f"CSV output: {csv_path}")
+    if dynamodb_table:
+        logging.info(f"DynamoDB output: {dynamodb_table} (region: {dynamodb_region})")
     
     while True:
         try:
@@ -261,6 +274,8 @@ def poll_and_resample(
                 resample_interval=resample_interval,
                 parquet_path=parquet_path,
                 csv_path=csv_path,
+                dynamodb_table=dynamodb_table,
+                dynamodb_region=dynamodb_region,
                 summary_table=summary_table
             )
             
@@ -309,6 +324,10 @@ def main():
                        help='Path to Parquet output file')
     parser.add_argument('--csv-path', type=str,
                        help='Path to CSV output file')
+    parser.add_argument('--dynamodb-table', type=str,
+                       help='Name of DynamoDB table to write to')
+    parser.add_argument('--dynamodb-region', type=str, default='us-east-1',
+                       help='AWS region for DynamoDB table (default: us-east-1)')
     parser.add_argument('--summary-table', type=str, default='underway_summary',
                        help='Name of the summary table (default: underway_summary)')
     parser.add_argument('--poll', action='store_true',
@@ -324,8 +343,8 @@ def main():
         logging.error("Database path not specified in config or command line")
         return
     
-    if not args.parquet_path and not args.csv_path:
-        logging.error("At least one output path (--parquet-path or --csv-path) must be specified")
+    if not args.parquet_path and not args.csv_path and not args.dynamodb_table:
+        logging.error("At least one output destination (--parquet-path, --csv-path, or --dynamodb-table) must be specified")
         return
     
     if args.poll:
@@ -336,6 +355,8 @@ def main():
                 resample_interval=args.resample_interval,
                 parquet_path=args.parquet_path,
                 csv_path=args.csv_path,
+                dynamodb_table=args.dynamodb_table,
+                dynamodb_region=args.dynamodb_region,
                 summary_table=args.summary_table,
                 stop_after=args.stop_after
             )
@@ -347,6 +368,8 @@ def main():
             resample_interval=args.resample_interval,
             parquet_path=args.parquet_path,
             csv_path=args.csv_path,
+            dynamodb_table=args.dynamodb_table,
+            dynamodb_region=args.dynamodb_region,
             summary_table=args.summary_table,
             partition_hours=config.get('partition_hours', None)
         )

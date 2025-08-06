@@ -8,6 +8,7 @@ parquet_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.ed
 csv_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.csv"
 #log_path = "C:/Users/CSL 2/Documents/LOCNESS_data/logs/"
 log_path = "/Users/brett/Projects/locness/locness-datamanager/data/datamanager.log"
+dynamodb_table = "locness-underway-summary"
 
 [resample-db]
 db_poll_interval = 10 # raw data polling interval in seconds
