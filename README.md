@@ -49,10 +49,39 @@ Or install from GitHub:
 uv pip install 'git+https://github.com/<username>/<repo>.git'
 ```
 
+## DynamoDB Integration
+
+Store underway summary data to AWS DynamoDB for cloud access and analysis.
+
+### Setup AWS Credentials
+Configure AWS credentials using one of these methods:
+- AWS CLI: `aws configure`
+- Environment variables: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+- IAM roles (if running on EC2)
+
+### Create DynamoDB Table
+```sh
+uv run setup-dynamodb create --table-name locness-underway-summary
+```
+
+### Configure Summary Data Output
+Add DynamoDB parameters to your `config.toml`:
+```toml
+dynamodb_table = "locness-underway-summary"
+dynamodb_region = "us-east-1"  # optional, defaults to us-east-1
+```
+
+Or use CLI flags:
+```sh
+uv run resample_summary --dynamodb-table locness-underway-summary --poll
+```
+
+The main data manager will automatically write summary data to DynamoDB when `dynamodb_table` is configured.
+
 ## Requirements
 
 - Python 3.9+
-- numpy, pandas, duckdb, pyarrow
+- numpy, pandas, duckdb, pyarrow, boto3 (for DynamoDB)
 
 ## License
 

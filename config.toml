@@ -9,6 +9,7 @@ csv_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.csv"
 #log_path = "C:/Users/CSL 2/Documents/LOCNESS_data/logs/"
 log_path = "/Users/brett/Projects/locness/locness-datamanager/data/datamanager.log"
 dynamodb_table = "locness-underway-summary"
+# dynamodb_region = "us-east-1"  # AWS region for DynamoDB (defaults to us-east-1)
 
 [resample-db]
 db_poll_interval = 10 # raw data polling interval in seconds

@@ -34,6 +34,7 @@ def poll_and_process(
     backup_manager: DatabaseBackup = None,
     csv_path: str = None,
     dynamodb_table: str = None,
+    dynamodb_region: str = 'us-east-1',
     ph_k0: float = 0.0,
     ph_k2: float = 0.0,
     ph_ma_window: int = 120,
@@ -80,7 +81,7 @@ def poll_and_process(
                 partition_hours=partition_hours,
                 csv_path=csv_path,
                 dynamodb_table=dynamodb_table,
-                dynamodb_region='us-east-1'
+                dynamodb_region=dynamodb_region
             )
 
         # if time to backup
@@ -101,6 +102,7 @@ def main():
     parquet_path = config.get('parquet_path')
     csv_path = config.get('csv_path')
     dynamodb_table = config.get('dynamodb_table')
+    dynamodb_region = config.get('dynamodb_region', 'us-east-1')
     log_path = config.get('log_path')
     db_poll_interval = config.get('db_poll_interval')
     db_resample_interval = config.get('db_res_int')
@@ -146,6 +148,7 @@ def main():
                 parquet_resample_interval=parquet_resample_interval,
                 csv_path=csv_path,
                 dynamodb_table=dynamodb_table,
+                dynamodb_region=dynamodb_region,
                 partition_hours=partition_hours,
                 backup_manager=backup_manager,
                 backup_interval=backup_interval,
