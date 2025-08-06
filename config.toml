@@ -10,7 +10,7 @@ csv_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.csv"
 log_path = "/Users/brett/Projects/locness/locness-datamanager/data/datamanager.log"
 
 [resample-db]
-db_poll_interval = 2 # raw data polling interval in seconds
+db_poll_interval = 10 # raw data polling interval in seconds
 db_res_int = "2s" # resampling interval in time units, e.g., "2s" for 2 seconds
 ph_ma_window = 120  # window in seconds for ph moving average
 ph_freq = 0.5  # frequency in Hz for ph moving average
