@@ -135,7 +135,7 @@ def generate_ph_data(n_records=1, start_time=None, frequency_hz=0.1):
             "v_bias_neg": -2.5 + np.random.normal(0, 0.1),  # Negative bias voltage
             "t_board": 20.0 + np.random.normal(0, 2.0),  # Board temperature
             "h_board": 50.0 + np.random.normal(0, 10.0),  # Board humidity
-            "vrse": 0.5 + np.random.normal(0, 0.05),  # Reference electrode voltage
+            "vrse": -0.95 + np.random.normal(0, 0.05),  # Reference electrode voltage
             "vrse_std": np.random.uniform(0.001, 0.01),  # Standard deviation
             "cevk": 0.8 + np.random.normal(0, 0.1),  # Counter electrode voltage vs K+
             "cevk_std": np.random.uniform(0.001, 0.02),  # Standard deviation
