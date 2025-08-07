@@ -68,6 +68,15 @@ def poll_and_process(
         else:
             logging.info("No new data to process")
 
+      # Write new data to DynamoDB if configured
+        if not new_df.empty and dynamodb_table:
+            logging.info(f"Writing {len(new_df)} new records to DynamoDB table: {dynamodb_table}")
+            try:
+                from locness_datamanager import file_writers
+                file_writers.to_dynamodb(new_df, dynamodb_table, region_name=dynamodb_region)
+            except Exception as e:
+                logging.error(f"Error writing to DynamoDB: {e}")
+
         # if time to write parquet
         if time.time() - last_parquet > parquet_poll_interval:
             logging.info("Writing resampled Parquet data...")
@@ -80,8 +89,9 @@ def poll_and_process(
                 parquet_path=parquet_path,
                 partition_hours=partition_hours,
                 csv_path=csv_path,
-                dynamodb_table=dynamodb_table,
-                dynamodb_region=dynamodb_region
+                # dynamodb writing now handled at full frequency above
+                #dynamodb_table=dynamodb_table,
+                #dynamodb_region=dynamodb_region
             )
 
         # if time to backup
