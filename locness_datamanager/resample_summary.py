@@ -114,9 +114,9 @@ def get_last_output_timestamp(file_path: str, file_type: str = 'parquet') -> Opt
     """
     try:
         if file_type == 'parquet':
-            df = pd.read_parquet(file_path)
+            df = pd.read_parquet(file_path, columns=['datetime_utc'])
         elif file_type == 'csv':
-            df = pd.read_csv(file_path)
+            df = pd.read_csv(file_path, usecols=['datetime_utc'])
         else:
             logging.error(f"Unsupported file type: {file_type}")
             return None
