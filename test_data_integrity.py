@@ -27,13 +27,26 @@ def print_datetime_regularity(df, label):
         else:
             df['datetime_utc'] = pd.to_datetime(df['datetime_utc'])
     print(f"Total rows: {len(df)}")
-    print(f"First 5 rows of datetime_utc column:")
+    print("First 5 rows:")
     print(df.head())
+
+    # Check for missing data in any column
+    missing_counts = df.isnull().sum()
+    total_rows = len(df)
+    any_missing = missing_counts.any()
+    if any_missing:
+        print("Missing data detected:")
+        for col, count in missing_counts.items():
+            if count > 0:
+                percent = (count / total_rows * 100) if total_rows > 0 else 0
+                print(f"  {col}: {count} missing ({percent:.2f}%)")
+    else:
+        print("No missing data detected in any column.")
+
     # Check monotonicity (strictly increasing)
     diffs_monotonic = df['datetime_utc'].diff().dt.total_seconds()
     non_monotonic_idx = diffs_monotonic < 0
     num_non_monotonic = non_monotonic_idx.sum()
-    total_rows = len(df)
     percent_non_monotonic = (num_non_monotonic / total_rows * 100) if total_rows > 0 else 0
     if num_non_monotonic == 0:
         print("Timestamps are strictly increasing (monotonic).")
@@ -77,12 +90,11 @@ def check_dynamodb_datetime_regularity(config):
         try:
             dynamodb = boto3.resource('dynamodb', region_name=dynamodb_region)
             table = dynamodb.Table(dynamodb_table)
-            # Scan table for all datetime_utc values (paginated)
-            response = table.scan(ProjectionExpression="datetime_utc")
+            # Scan table for all fields (no ProjectionExpression)
+            response = table.scan()
             items = response.get('Items', [])
             while 'LastEvaluatedKey' in response:
                 response = table.scan(
-                    ProjectionExpression="datetime_utc",
                     ExclusiveStartKey=response['LastEvaluatedKey']
                 )
                 items.extend(response.get('Items', []))
@@ -113,7 +125,7 @@ def main():
         for table, label in sqlite_tables:
             try:
                 #df_table = pd.read_sql_query(f"SELECT datetime_utc FROM {table} ORDER BY datetime_utc", conn)
-                df_table = pd.read_sql_query(f"SELECT datetime_utc FROM {table}", conn)
+                df_table = pd.read_sql_query(f"SELECT * FROM {table}", conn)
             except Exception as e:
                 print(f"Error reading from SQLite table {table}: {e}")
                 df_table = pd.DataFrame()
