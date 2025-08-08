@@ -1,13 +1,13 @@
 
 [paths]
-#db_path= "C:/Users/CSL 2/Documents/LOCNESS_data/database/locness.db"
-db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
-#parquet_path = "G:/Shared drives/locness/synthetic_data/locness.parquet"
-parquet_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/synthetic_data/locness.parquet"
+db_path= "C:/Users/CSL 2/Documents/LOCNESS_data/database/locness.db"
+parquet_path = "G:/Shared drives/locness/synthetic_data/locness.parquet"
+log_path = "C:/Users/CSL 2/Documents/LOCNESS_data/logs/"
+#db_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.db"
+#parquet_path = "/Users/brett/Library/CloudStorage/GoogleDrive-blongworth@whoi.edu/Shared drives/locness/synthetic_data/locness.parquet"
 # add csv_path to write summary csv
-csv_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.csv"
-#log_path = "C:/Users/CSL 2/Documents/LOCNESS_data/logs/"
-log_path = "/Users/brett/Projects/locness/locness-datamanager/data/datamanager.log"
+#csv_path = "/Users/brett/Projects/locness/locness-datamanager/data/locness.csv"
+#log_path = "/Users/brett/Projects/locness/locness-datamanager/data/datamanager.log"
 dynamodb_table = "locness-underway-summary"
 # dynamodb_region = "us-east-1"  # AWS region for DynamoDB (defaults to us-east-1)
 
@@ -28,7 +28,8 @@ partition_hours = 6  # hours to partition the data for writing
 
 [db-backup]
 backup_interval = 0.025  # database backup interval in hours
-backup_path = "/Users/brett/Projects/locness/locness-datamanager/data/backup"  # path to backup the database
+#backup_path = "/Users/brett/Projects/locness/locness-datamanager/data/backup"  # path to backup the database
+backup_path = "C:/Users/CSL 2/Documents/LOCNESS_data/backups"
 
 [synthetic_data]
 time = 60 # time in seconds of synthetic data to generate
