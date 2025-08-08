@@ -1,6 +1,9 @@
+
 import pandas as pd
 import sqlite3
+import boto3
 from locness_datamanager.config import get_config
+
 
 # Load the config file
 config = get_config()
@@ -10,7 +13,6 @@ parquet_path = config.get('parquet_path')
 
 # Read the parquet dataset
 df = pd.read_parquet(parquet_path)
-
 
 def print_datetime_regularity(df, label):
     print(f"\n--- {label} datetime_utc regularity ---")
@@ -24,7 +26,23 @@ def print_datetime_regularity(df, label):
             df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], unit='s')
         else:
             df['datetime_utc'] = pd.to_datetime(df['datetime_utc'])
-    # Sort by datetime_utc
+    print(f"Total rows: {len(df)}")
+    print(f"First 5 rows of datetime_utc column:")
+    print(df.head())
+    # Check monotonicity (strictly increasing)
+    diffs_monotonic = df['datetime_utc'].diff().dt.total_seconds()
+    non_monotonic_idx = diffs_monotonic < 0
+    num_non_monotonic = non_monotonic_idx.sum()
+    total_rows = len(df)
+    percent_non_monotonic = (num_non_monotonic / total_rows * 100) if total_rows > 0 else 0
+    if num_non_monotonic == 0:
+        print("Timestamps are strictly increasing (monotonic).")
+    else:
+        print(f"Warning: Timestamps are NOT strictly increasing! Non-monotonic points: {num_non_monotonic} / {total_rows} ({percent_non_monotonic:.2f}%)")
+        print("Non-monotonic rows (where time goes backwards):")
+        print(df.loc[non_monotonic_idx, 'datetime_utc'])
+
+    # Sort by datetime_utc for regularity checks
     df = df.sort_values('datetime_utc')
     # Calculate time differences in seconds
     diffs = df['datetime_utc'].diff().dt.total_seconds().dropna()
@@ -34,6 +52,12 @@ def print_datetime_regularity(df, label):
     print(f"Std deviation: {diffs.std()} seconds")
     print(f"Min interval: {diffs.min()} seconds")
     print(f"Max interval: {diffs.max()} seconds")
+    # Check for duplicate timestamps
+    duplicate_count = df['datetime_utc'].duplicated().sum()
+    if duplicate_count > 0:
+        print(f"Duplicate timestamps detected: {duplicate_count} out of {len(df)} rows")
+    else:
+        print("No duplicate timestamps detected.")
     irregular = diffs[(diffs - diffs.mean()).abs() > 2 * diffs.std()]
     total_intervals = len(diffs)
     num_irregular = len(irregular)
@@ -44,30 +68,63 @@ def print_datetime_regularity(df, label):
     else:
         print("All intervals are regular within 2 standard deviations.")
 
-# Example: print the first few rows
-print(df.head())
 
-
-print_datetime_regularity(df, "Parquet")
-
-
-# Check regularity of datetime_utc in multiple tables in sqlite
-db_path = config.get('db_path')
-sqlite_tables = [
-    ("underway_summary", "SQLite underway_summary"),
-    ("rhodamine", "SQLite rhodamine"),
-    ("ph", "SQLite ph"),
-    ("tsg", "SQLite tsg"),
-    ("gps", "SQLite gps"),
-]
-with sqlite3.connect(db_path) as conn:
-    for table, label in sqlite_tables:
+def check_dynamodb_datetime_regularity(config):
+    dynamodb_table = config.get('dynamodb_table')
+    dynamodb_region = config.get('dynamodb_region', 'us-east-1')
+    if dynamodb_table:
+        print(f"\n--- DynamoDB {dynamodb_table} datetime_utc regularity ---")
         try:
-            df_table = pd.read_sql_query(f"SELECT datetime_utc FROM {table} ORDER BY datetime_utc", conn)
+            dynamodb = boto3.resource('dynamodb', region_name=dynamodb_region)
+            table = dynamodb.Table(dynamodb_table)
+            # Scan table for all datetime_utc values (paginated)
+            response = table.scan(ProjectionExpression="datetime_utc")
+            items = response.get('Items', [])
+            while 'LastEvaluatedKey' in response:
+                response = table.scan(
+                    ProjectionExpression="datetime_utc",
+                    ExclusiveStartKey=response['LastEvaluatedKey']
+                )
+                items.extend(response.get('Items', []))
+            # Convert to DataFrame
+            df_dynamo = pd.DataFrame(items)
+            if df_dynamo.empty or 'datetime_utc' not in df_dynamo.columns:
+                print("datetime_utc column not found or no data in DynamoDB table!")
+            else:
+                # DynamoDB stores as string, so parse
+                df_dynamo['datetime_utc'] = pd.to_datetime(df_dynamo['datetime_utc'], errors='coerce')
+                print_datetime_regularity(df_dynamo, f"DynamoDB {dynamodb_table}")
         except Exception as e:
-            print(f"Error reading from SQLite table {table}: {e}")
-            df_table = pd.DataFrame()
-        if df_table.empty or 'datetime_utc' not in df_table.columns:
-            print(f"datetime_utc column not found or no data in {table}!")
-        else:
-            print_datetime_regularity(df_table, label)
+            print(f"Error reading from DynamoDB table {dynamodb_table}: {e}")
+
+def main():
+
+
+    # Check regularity of datetime_utc in multiple tables in sqlite
+    db_path = config.get('db_path')
+    sqlite_tables = [
+        ("underway_summary", "SQLite underway_summary"),
+        ("rhodamine", "SQLite rhodamine"),
+        ("ph", "SQLite ph"),
+        ("tsg", "SQLite tsg"),
+        ("gps", "SQLite gps"),
+    ]
+    with sqlite3.connect(db_path) as conn:
+        for table, label in sqlite_tables:
+            try:
+                #df_table = pd.read_sql_query(f"SELECT datetime_utc FROM {table} ORDER BY datetime_utc", conn)
+                df_table = pd.read_sql_query(f"SELECT datetime_utc FROM {table}", conn)
+            except Exception as e:
+                print(f"Error reading from SQLite table {table}: {e}")
+                df_table = pd.DataFrame()
+            if df_table.empty or 'datetime_utc' not in df_table.columns:
+                print(f"datetime_utc column not found or no data in {table}!")
+            else:
+                print_datetime_regularity(df_table, label)
+
+    print_datetime_regularity(df, "Parquet")
+    check_dynamodb_datetime_regularity(config)
+
+
+if __name__ == "__main__":
+    main()
