@@ -64,6 +64,7 @@ def read_summary_table(sqlite_path: str, table_name: str = 'underway_summary', a
 def resample_summary_data(df: pd.DataFrame, resample_interval: str = '60s') -> pd.DataFrame:
     """
     Resample summary data using mean aggregation.
+    Drops NaN/missing values before computing means to avoid missing results.
     
     Args:
         df: Input DataFrame with datetime_utc column
@@ -89,8 +90,13 @@ def resample_summary_data(df: pd.DataFrame, resample_interval: str = '60s') -> p
         logging.warning("No numeric columns found for resampling")
         return pd.DataFrame()
     
-    # Resample numeric columns with mean
-    df_resampled = df_indexed[numeric_columns].resample(resample_interval).mean()
+    # Resample numeric columns with mean, dropping NaN values before computing means
+    def mean_dropna(x):
+        """Compute mean after dropping NaN values."""
+        clean_x = x.dropna()
+        return clean_x.mean() if len(clean_x) > 0 else pd.NA
+    
+    df_resampled = df_indexed[numeric_columns].resample(resample_interval).apply(mean_dropna)
     
     # Reset index to get datetime_utc back as a column
     df_resampled = df_resampled.reset_index()

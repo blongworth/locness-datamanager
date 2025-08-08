@@ -170,6 +170,8 @@ def add_corrected_ph(df, k0=0.0, k2=0.0):
 def add_ph_moving_average(df, window_seconds=120, freq_hz=1.0):
     """
     Add a moving average column for pH to the DataFrame.
+    Uses min_periods=1 to ensure moving averages are computed even when some values in the window are missing.
+    
     window_seconds: window size in seconds
     freq_hz: sampling frequency in Hz
     """
@@ -178,12 +180,19 @@ def add_ph_moving_average(df, window_seconds=120, freq_hz=1.0):
         df = df.sort_values('datetime_utc')
         df = df.reset_index(drop=True)
     window_size = max(1, int(window_seconds * freq_hz))
-    # Moving average for ph_corrected
+    
+    # Moving average for ph_corrected - use min_periods=1 to handle missing data
     if 'ph_corrected' in df.columns:
-        df['ph_corrected_ma'] = df['ph_corrected'].rolling(window=window_size, min_periods=1).mean()
-    # Moving average for ph_total
+        df['ph_corrected_ma'] = df['ph_corrected'].rolling(
+            window=window_size, min_periods=1
+        ).mean()
+    
+    # Moving average for ph_total - use min_periods=1 to handle missing data
     if 'ph_total' in df.columns:
-        df['ph_total_ma'] = df['ph_total'].rolling(window=window_size, min_periods=1).mean()
+        df['ph_total_ma'] = df['ph_total'].rolling(
+            window=window_size, min_periods=1
+        ).mean()
+    
     return df
 
 def add_computed_fields(df, config=None):

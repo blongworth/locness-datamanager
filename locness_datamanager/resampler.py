@@ -130,7 +130,10 @@ class PersistentResampler:
     
     def resample_and_join(self, raw_data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         """
-        Resample raw data tables and join into a single DataFrame.
+        Resample raw data tables using mean aggregation and join into a single DataFrame.
+        
+        Uses mean aggregation for numeric columns (pandas automatically drops NaN values).
+        For non-numeric columns, uses the first value in each time bin.
         
         Args:
             raw_data: Dict mapping table names to DataFrames
@@ -173,7 +176,7 @@ class PersistentResampler:
         result = pd.DataFrame({'datetime_utc': time_grid})
         result = result.set_index('datetime_utc')
         
-        # Resample each table to the time grid
+        # Resample each table to the time grid using mean aggregation
         for table, df in raw_data.items():
             if df.empty or 'datetime_utc' not in df.columns:
                 continue
@@ -183,8 +186,24 @@ class PersistentResampler:
             df_prep = df_prep.drop_duplicates(subset='datetime_utc')
             df_prep = df_prep.set_index('datetime_utc')
             
-            # Use simple resampling to the grid
-            df_resampled = df_prep.reindex(time_grid, method='nearest', tolerance=resample_freq)
+            # Get numeric columns for mean aggregation
+            numeric_cols = df_prep.select_dtypes(include=['number']).columns
+            
+            if len(numeric_cols) > 0:
+                # Use mean aggregation for numeric columns (pandas already drops NaN by default)
+                df_resampled = df_prep[numeric_cols].resample(self.resample_interval).mean()
+                
+                # For non-numeric columns, use first value (or could use mode)
+                non_numeric_cols = df_prep.select_dtypes(exclude=['number']).columns
+                if len(non_numeric_cols) > 0:
+                    df_non_numeric = df_prep[non_numeric_cols].resample(self.resample_interval).first()
+                    df_resampled = df_resampled.join(df_non_numeric)
+            else:
+                # No numeric columns, just use first value for all
+                df_resampled = df_prep.resample(self.resample_interval).first()
+            
+            # Reindex to match our time grid
+            df_resampled = df_resampled.reindex(time_grid)
             
             # Join to result
             result = result.join(df_resampled, how='left')
@@ -290,7 +309,7 @@ class PersistentResampler:
         # Calculate window size in samples
         window_size = max(1, int(self.ph_ma_window * self.ph_freq))
         
-        # Calculate moving averages on the buffer
+        # Calculate moving averages on the buffer - use min_periods=1 to handle missing data
         buffer_with_ma = self.ph_buffer.copy()
         buffer_with_ma['ph_total_ma'] = buffer_with_ma['ph_total'].rolling(
             window=window_size, min_periods=1
