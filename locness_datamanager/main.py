@@ -20,6 +20,12 @@ Features:
 Configuration is loaded via `get_config()`. Run as a script to start the data manager loop.
 """
 
+# TODO: manual resample/moving average calc check
+# TODO: discuss resampling strategy- mean vs first/last
+# TODO: diagnose missing data in summary table
+# TODO: improve logging format and levels
+# TODO: test full frequency sqlite resample/write
+# TODO: Test full frequency dynamodb writing
 # TODO: Start main from shortcut
 
 def poll_and_process(
