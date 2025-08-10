@@ -68,6 +68,10 @@ class PersistentResampler:
         """
         Get new raw data that hasn't been processed yet.
         
+        To ensure data continuity and handle potential timing issues,
+        this method looks back 2 seconds before the last processed timestamp
+        when querying for new data.
+        
         Returns:
             Dict mapping table names to DataFrames of new data
         """
@@ -89,12 +93,15 @@ class PersistentResampler:
                 base_query = f"SELECT {', '.join(columns)} FROM {table}"
                 
                 if self.last_processed[table] is not None:
-                    # Get only records after the last processed timestamp
-                    unix_timestamp = int(self.last_processed[table].timestamp())
+                    # Look back 2 seconds before the last processed timestamp to ensure overlap
+                    lookback_timestamp = self.last_processed[table] - pd.Timedelta(seconds=2)
+                    unix_timestamp = int(lookback_timestamp.timestamp())
                     query = f"{base_query} WHERE datetime_utc > {unix_timestamp} ORDER BY datetime_utc"
+                    query_from_timestamp = lookback_timestamp
                 else:
                     # First run, get all data
                     query = f"{base_query} ORDER BY datetime_utc"
+                    query_from_timestamp = None
                 
                 try:
                     df = pd.read_sql_query(query, conn)
@@ -109,8 +116,12 @@ class PersistentResampler:
                         # Update last processed timestamp
                         self.last_processed[table] = df['datetime_utc'].max()
                         
-                        logging.info(f"Found {len(df)} new records in {table}, "
-                                   f"latest: {self.last_processed[table]}")
+                        if query_from_timestamp is not None:
+                            logging.info(f"Found {len(df)} new records in {table}, "
+                                       f"latest: {self.last_processed[table]} (queried from {query_from_timestamp})")
+                        else:
+                            logging.info(f"Found {len(df)} new records in {table}, "
+                                       f"latest: {self.last_processed[table]}")
                     
                     new_data[table] = df
                     
