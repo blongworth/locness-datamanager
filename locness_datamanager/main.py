@@ -80,6 +80,18 @@ def poll_and_process(
             try:
                 from locness_datamanager import file_writers
                 file_writers.to_dynamodb(new_df, dynamodb_table, region_name=dynamodb_region)
+                # Use this for 10s dynamodb data
+                # Select first complete row, fallback to 2nd row if none complete
+                # if len(new_df) > 0:
+                #     complete_rows = new_df.dropna()
+                #     if len(complete_rows) > 0:
+                #         selected_row = complete_rows.iloc[0:1]  # First complete row
+                #     elif len(new_df) > 1:
+                #         selected_row = new_df.iloc[1:2]  # Second row if no complete rows
+                #     else:
+                #         selected_row = new_df.iloc[0:1]  # First row if only one row exists
+                #     
+                #     file_writers.to_dynamodb(selected_row, dynamodb_table, region_name=dynamodb_region)
             except Exception as e:
                 logging.error(f"Error writing to DynamoDB: {e}")
 
