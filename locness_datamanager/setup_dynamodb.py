@@ -4,6 +4,34 @@ setup_dynamodb.py
 
 Script to create a DynamoDB table on AWS for storing underway summary data.
 The table is designed to store oceanographic data with timestamp-based partitioning.
+
+- Partition Key: static_partition (single value "data") 
+- Sort Key: datetime_utc (ISO timestamp)
+
+QUERY PATTERNS SUPPORTED:
+========================
+
+1. Get latest data since last query (PRIMARY USE CASE):
+   Query primary table with:
+   - static_partition = "data"
+   - datetime_utc > "2025-08-10T14:30:00Z" (last fetched timestamp)
+   - ScanIndexForward=True (ascending order)
+
+2. Get latest N records:
+   Query primary table with:
+   - static_partition = "data"
+   - ScanIndexForward=False, Limit=N
+
+3. Get data for time range:
+   Query primary table with:
+   - static_partition = "data" 
+   - datetime_utc BETWEEN start_time AND end_time
+
+Note: When inserting data, populate these fields:
+- static_partition: Always "data" (constant value)
+- datetime_utc: Full ISO timestamp (e.g., "2025-08-10T14:30:00Z")
+
+OPTIMAL FOR: 10-day datasets with 2-second intervals and 10-second queries.
 """
 
 import argparse
@@ -21,7 +49,10 @@ def create_underway_summary_table(
     write_capacity: int = 5
 ) -> bool:
     """
-    Create a DynamoDB table for underway summary data.
+    Create a DynamoDB table optimized for short-term time-series data.
+    
+    - Primary Key: static_partition (HASH) + datetime_utc (RANGE)
+    - No GSI needed for single partition approach
     
     Args:
         table_name: Name of the DynamoDB table to create
@@ -57,20 +88,32 @@ def create_underway_summary_table(
                 logging.error(f"Error checking table existence: {e}")
                 return False
         
-        # Define table schema
+        # Single static partition approach for maximum simplicity and performance
         key_schema = [
             {
-                'AttributeName': 'datetime_utc',
+                'AttributeName': 'static_partition',
                 'KeyType': 'HASH'  # Partition key
+            },
+            {
+                'AttributeName': 'datetime_utc',
+                'KeyType': 'RANGE'  # Sort key (full ISO timestamp)
             }
         ]
         
         attribute_definitions = [
             {
+                'AttributeName': 'static_partition',
+                'AttributeType': 'S'  # String (constant value "data")
+            },
+            {
                 'AttributeName': 'datetime_utc',
                 'AttributeType': 'S'  # String (ISO format timestamp)
             }
         ]
+        
+        # No GSI needed for single partition approach
+        # All queries are within the same partition
+        global_secondary_indexes = []
         
         # Create table parameters
         table_params = {
@@ -79,7 +122,11 @@ def create_underway_summary_table(
             'AttributeDefinitions': attribute_definitions,
         }
         
-        # Set billing mode
+        # Add GSI only if configured
+        if global_secondary_indexes:
+            table_params['GlobalSecondaryIndexes'] = global_secondary_indexes
+        
+        # Set billing mode (no GSI to configure)
         if billing_mode.upper() == 'PROVISIONED':
             table_params['BillingMode'] = 'PROVISIONED'
             table_params['ProvisionedThroughput'] = {
@@ -100,6 +147,9 @@ def create_underway_summary_table(
         print(f"Creating table: {table_name}")
         print(f"Region: {region_name}")
         print(f"Billing mode: {billing_mode}")
+        print("Primary Key: static_partition (HASH) + datetime_utc (RANGE)")
+        print("No Global Secondary Indexes needed for single partition approach")
+        print("Optimized for 10-day datasets with 10-second incremental queries.")
         
         # Create the table
         table = dynamodb.create_table(**table_params)
@@ -218,7 +268,6 @@ def list_dynamodb_tables(region_name: str = 'us-east-1'):
         logging.error(f"Error listing tables: {e}")
         print(f"Error listing tables: {e}")
 
-
 def main():
     """Command-line interface for DynamoDB table management."""
     parser = argparse.ArgumentParser(
@@ -226,7 +275,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Create a table with default settings
+  # Create a table with default settings (PAY_PER_REQUEST billing)
   python setup_dynamodb.py create --table-name locness-underway-summary
 
   # Create a table with provisioned billing
@@ -241,6 +290,10 @@ Examples:
 
 Note: Ensure AWS credentials are configured via AWS CLI, environment variables,
 or IAM roles before running this script.
+
+When inserting data, populate these fields:
+  - static_partition: "data" (constant value)
+  - datetime_utc: ISO timestamp (e.g., "2025-08-10T14:30:00Z")
         """
     )
     

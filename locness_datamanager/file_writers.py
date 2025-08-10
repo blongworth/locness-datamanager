@@ -137,7 +137,10 @@ def to_dynamodb(df, table_name, region_name='us-east-1', batch_size=25):
             else:
                 processed_record[key] = str(value)
         
-        # Ensure we have a partition key (datetime_utc is our primary key)
+        # Add required partition key for single partition schema
+        processed_record['static_partition'] = 'data'
+        
+        # Ensure we have the sort key (datetime_utc)
         if 'datetime_utc' in processed_record:
             processed_records.append(processed_record)
     
