@@ -84,21 +84,21 @@ def poll_and_process(
                 logging.error(f"Error writing to DynamoDB: {e}")
 
         # if time to write parquet
-        if time.time() - last_parquet > parquet_poll_interval:
-            logging.info("Writing resampled Parquet data...")
-            last_parquet = time.time()
-            # use main resample_summary interval function
-            print("csv_path:", csv_path)
-            process_summary_incremental(
-                sqlite_path=db_path,
-                resample_interval=parquet_resample_interval,
-                parquet_path=parquet_path,
-                partition_hours=partition_hours,
-                csv_path=csv_path,
-                # dynamodb writing now handled at full frequency above
-                #dynamodb_table=dynamodb_table,
-                #dynamodb_region=dynamodb_region
-            )
+        # if time.time() - last_parquet > parquet_poll_interval:
+        #     logging.info("Writing resampled Parquet data...")
+        #     last_parquet = time.time()
+        #     # use main resample_summary interval function
+        #     print("csv_path:", csv_path)
+        #     process_summary_incremental(
+        #         sqlite_path=db_path,
+        #         resample_interval=parquet_resample_interval,
+        #         parquet_path=parquet_path,
+        #         partition_hours=partition_hours,
+        #         csv_path=csv_path,
+        #         # dynamodb writing now handled at full frequency above
+        #         #dynamodb_table=dynamodb_table,
+        #         #dynamodb_region=dynamodb_region
+        #     )
 
         # if time to backup
         if time.time() - last_backup > backup_interval_seconds:
