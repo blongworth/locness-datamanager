@@ -12,7 +12,8 @@ config = get_config()
 parquet_path = config.get('parquet_path')
 
 # Read the parquet dataset
-df = pd.read_parquet(parquet_path)
+if parquet_path and os.path.exists(parquet_path):
+    df = pd.read_parquet(parquet_path)
 
 def print_datetime_regularity(df, label):
     print(f"\n--- {label} datetime_utc regularity ---")
@@ -134,7 +135,8 @@ def main():
             else:
                 print_datetime_regularity(df_table, label)
 
-    print_datetime_regularity(df, "Parquet")
+    if 'df' in locals():
+        print_datetime_regularity(df, "Parquet")
     check_dynamodb_datetime_regularity(config)
 
 
