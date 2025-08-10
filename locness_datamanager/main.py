@@ -5,6 +5,7 @@ from locness_datamanager.resample import write_resampled_to_sqlite
 from locness_datamanager.resample_summary import process_summary_incremental
 from locness_datamanager.backup_db import DatabaseBackup
 from locness_datamanager.resampler import PersistentResampler
+from locness_datamanager import file_writers
 import os
 
 """
@@ -74,31 +75,42 @@ def poll_and_process(
         else:
             logging.info("No new data to process")
 
-      # Write new data to DynamoDB if configured
+        # Write new data to DynamoDB if configured
         if not new_df.empty and dynamodb_table:
             logging.info(f"Writing {len(new_df)} new records to DynamoDB table: {dynamodb_table}")
             try:
-                from locness_datamanager import file_writers
                 file_writers.to_dynamodb(new_df, dynamodb_table, region_name=dynamodb_region)
+                # Use this for 10s dynamodb data
+                # Select first complete row, fallback to 2nd row if none complete
+                # if len(new_df) > 0:
+                #     complete_rows = new_df.dropna()
+                #     if len(complete_rows) > 0:
+                #         selected_row = complete_rows.iloc[0:1]  # First complete row
+                #     elif len(new_df) > 1:
+                #         selected_row = new_df.iloc[1:2]  # Second row if no complete rows
+                #     else:
+                #         selected_row = new_df.iloc[0:1]  # First row if only one row exists
+                #     
+                #     file_writers.to_dynamodb(selected_row, dynamodb_table, region_name=dynamodb_region)
             except Exception as e:
                 logging.error(f"Error writing to DynamoDB: {e}")
 
         # if time to write parquet
-        if time.time() - last_parquet > parquet_poll_interval:
-            logging.info("Writing resampled Parquet data...")
-            last_parquet = time.time()
-            # use main resample_summary interval function
-            print("csv_path:", csv_path)
-            process_summary_incremental(
-                sqlite_path=db_path,
-                resample_interval=parquet_resample_interval,
-                parquet_path=parquet_path,
-                partition_hours=partition_hours,
-                csv_path=csv_path,
-                # dynamodb writing now handled at full frequency above
-                #dynamodb_table=dynamodb_table,
-                #dynamodb_region=dynamodb_region
-            )
+        # if time.time() - last_parquet > parquet_poll_interval:
+        #     logging.info("Writing resampled Parquet data...")
+        #     last_parquet = time.time()
+        #     # use main resample_summary interval function
+        #     print("csv_path:", csv_path)
+        #     process_summary_incremental(
+        #         sqlite_path=db_path,
+        #         resample_interval=parquet_resample_interval,
+        #         parquet_path=parquet_path,
+        #         partition_hours=partition_hours,
+        #         csv_path=csv_path,
+        #         # dynamodb writing now handled at full frequency above
+        #         #dynamodb_table=dynamodb_table,
+        #         #dynamodb_region=dynamodb_region
+        #     )
 
         # if time to backup
         if time.time() - last_backup > backup_interval_seconds:
