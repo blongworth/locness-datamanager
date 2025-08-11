@@ -1,15 +1,25 @@
 # Locness Data Manager
 
-Locness Data Manager is a Python toolkit for generating, processing, and synchronizing oceanographic and sensor data. It supports robust synthetic data generation, time alignment, resampling, and mirroring between local and remote databases (SQLite, DuckDB, CSV, Parquet).
+Locness Data Manager is a python package for managing LOCNESS underway data. Main function is to combine raw data from sql tables, resample to a common frequency, add computed fields, and write to a summary table, AWS DynamoDB, and various file formats (CSV, Parquet, DuckDB). It also includes utilities for generating synthetic oceanographic timeseries data for testing and development.
 
-## Features
+## Installation
 
-- Generate realistic synthetic oceanographic timeseries data
-- Output to CSV, Parquet, and DuckDB (append or create)
-- Command-line interface (CLI) for batch or continuous data generation
-- Modular Python API for integration in other projects
-- Time alignment and resampling utilities
-- Data mirroring between local and shore (remote) databases
+```sh
+git clone https://github.com/<username>/locness-datamanager.git
+```
+
+Dependency and environment management is easiest handled with uv. 
+
+## Usage
+
+### Setup and startup for underway data management
+
+1. Edit `config.toml` to set database connection parameters, input table names, output file paths, and resampling frequency.
+2. Run `uv run setup-db` to create the sqlite database
+3. Run `uv run setup-dynamodb create` to create the DynamoDB table (if using)
+4. Start the DAQ programs: fluorometer, ph, TSG, GPS.
+5. Start the main data manager `uv run datamanager`
+6. Start the web dashboard
 
 ## Synthetic Data Generation Usage
 
