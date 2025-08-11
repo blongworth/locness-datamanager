@@ -5,6 +5,7 @@ from locness_datamanager.resample import write_resampled_to_sqlite
 from locness_datamanager.resample_summary import process_summary_incremental
 from locness_datamanager.backup_db import DatabaseBackup
 from locness_datamanager.resampler import PersistentResampler
+from locness_datamanager import file_writers
 import os
 
 """
@@ -74,11 +75,10 @@ def poll_and_process(
         else:
             logging.info("No new data to process")
 
-      # Write new data to DynamoDB if configured
+        # Write new data to DynamoDB if configured
         if not new_df.empty and dynamodb_table:
             logging.info(f"Writing {len(new_df)} new records to DynamoDB table: {dynamodb_table}")
             try:
-                from locness_datamanager import file_writers
                 file_writers.to_dynamodb(new_df, dynamodb_table, region_name=dynamodb_region)
                 # Use this for 10s dynamodb data
                 # Select first complete row, fallback to 2nd row if none complete
