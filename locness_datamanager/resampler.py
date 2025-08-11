@@ -69,7 +69,7 @@ class PersistentResampler:
         Get new raw data that hasn't been processed yet.
         
         To ensure data continuity and handle potential timing issues,
-        this method looks back 2 seconds before the last processed timestamp
+        this method looks back 4s before the last processed timestamp
         when querying for new data.
         
         Returns:
@@ -94,7 +94,7 @@ class PersistentResampler:
                 
                 if self.last_processed[table] is not None:
                     # Look back 2 seconds before the last processed timestamp to ensure overlap
-                    lookback_timestamp = self.last_processed[table] - pd.Timedelta(seconds=2)
+                    lookback_timestamp = self.last_processed[table] - pd.Timedelta(seconds=4)
                     unix_timestamp = int(lookback_timestamp.timestamp())
                     query = f"{base_query} WHERE datetime_utc > {unix_timestamp} ORDER BY datetime_utc"
                     query_from_timestamp = lookback_timestamp
@@ -405,7 +405,10 @@ class PersistentResampler:
         
         # Resample and join
         df = self.resample_and_join(raw_data)
-        
+
+        # Remove first row (may be partial)
+        df = df.iloc[1:]
+
         if df.empty:
             logging.info("No data after resampling")
             return df

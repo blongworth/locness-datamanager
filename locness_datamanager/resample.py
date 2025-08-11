@@ -437,7 +437,7 @@ def process_raw_data_incremental(
 def write_resampled_to_sqlite(df, sqlite_path, output_table):
     """
     Write resampled DataFrame to the underway_summary table in SQLite with integer datetime_utcs.
-    Handles duplicate timestamps by checking for existing records.
+    Uses INSERT OR REPLACE to overwrite records with duplicate timestamps.
     """
     if df.empty:
         logging.info("No data to write to database")
@@ -461,51 +461,25 @@ def write_resampled_to_sqlite(df, sqlite_path, output_table):
     
     try:
         conn = sqlite3.connect(sqlite_path)
-    except Exception as e:
-        logging.error(f"Error connecting to SQLite database for writing: {e}")
-        return
-    
-    try:
-        # Check for existing timestamps to avoid constraint violations
-        existing_timestamps = set()
-        if len(df_copy) > 0:
-            timestamps_str = ','.join(map(str, df_copy['datetime_utc'].tolist()))
-            check_query = f"SELECT datetime_utc FROM {output_table} WHERE datetime_utc IN ({timestamps_str})"
-            try:
-                existing_df = pd.read_sql_query(check_query, conn)
-                existing_timestamps = set(existing_df['datetime_utc'].tolist())
-            except Exception:
-                # Table might not exist yet, that's okay
-                pass
         
-        # Filter out existing timestamps
-        if existing_timestamps:
-            df_filtered = df_copy[~df_copy['datetime_utc'].isin(existing_timestamps)]
-            skipped_count = len(df_copy) - len(df_filtered)
-            if skipped_count > 0:
-                logging.info(f"Skipped {skipped_count} records with existing timestamps")
-            df_copy = df_filtered
+        # Get column names (excluding 'id' which is auto-increment)
+        columns = [col for col in df_copy.columns if col != 'id']
+        placeholders = ', '.join(['?' for _ in columns])
+        column_names = ', '.join(columns)
         
-        if df_copy.empty:
-            logging.info("No new records to write after checking existing timestamps")
-            return
+        # Use INSERT OR REPLACE to handle duplicate timestamps
+        query = f"INSERT OR REPLACE INTO {output_table} ({column_names}) VALUES ({placeholders})"
         
-        # Write to database
-        df_copy.to_sql(output_table, conn, if_exists='append', index=False)
+        # Convert DataFrame to list of tuples for executemany
+        data = [tuple(row[col] for col in columns) for _, row in df_copy.iterrows()]
+        
+        conn.executemany(query, data)
+        conn.commit()
+        
         logging.info(f"Successfully wrote {len(df_copy)} resampled records to {output_table} table")
         
     except Exception as e:
-        # If we still get a constraint error, log details
-        if "UNIQUE constraint failed" in str(e):
-            logging.error(f"UNIQUE constraint violation in {output_table} table. "
-                         f"Duplicate timestamps found in data: {e}")
-            # Show problematic timestamps
-            if not df_copy.empty:
-                duplicates = df_copy[df_copy['datetime_utc'].duplicated()]
-                if not duplicates.empty:
-                    logging.error(f"Duplicate timestamps in DataFrame: {duplicates['datetime_utc'].tolist()}")
-        else:
-            logging.error(f"Error writing to {output_table} table: {e}")
+        logging.error(f"Error writing to {output_table} table: {e}")
     finally:
         conn.close()
 
