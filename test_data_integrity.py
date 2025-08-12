@@ -1,4 +1,4 @@
-
+import os
 import pandas as pd
 import sqlite3
 import boto3
@@ -78,7 +78,12 @@ def print_datetime_regularity(df, label):
     percent_irregular = (num_irregular / total_intervals * 100) if total_intervals > 0 else 0
     if not irregular.empty:
         print(f"Irregular intervals detected: {num_irregular} out of {total_intervals} ({percent_irregular:.2f}%)")
-        print(irregular)
+        print("Irregular intervals with timestamps:")
+        for idx, interval in irregular.items():
+            # Get the timestamp at the beginning and end of this irregular interval
+            start_time = df.iloc[idx - 1]['datetime_utc'] if idx > 0 else df.iloc[0]['datetime_utc']
+            end_time = df.iloc[idx]['datetime_utc']
+            print(f"  Interval: {interval:.2f}s, Start: {start_time}, End: {end_time}")
     else:
         print("All intervals are regular within 2 standard deviations.")
 
