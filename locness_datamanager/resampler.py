@@ -239,15 +239,22 @@ class PersistentResampler:
             df['ph_corrected'] = pd.NA
             return df
         
-        # Calculate corrected pH
-        mask = df['temp'].isna() | df['salinity'].isna() | df['vrse'].isna()
+        # Create working copy to avoid modifying original data
+        df_work = df.copy()
+        
+        # Forward fill missing temp and salinity values with last available values
+        df_work['temp'] = df_work['temp'].ffill()
+        df_work['salinity'] = df_work['salinity'].ffill()
+        
+        # Calculate corrected pH using filled values, but only where vrse is available
+        mask = df_work['vrse'].isna()
         
         try:
             ph_free, ph_total = calc_ph(
-                Vrs=df['vrse'],
+                Vrs=df_work['vrse'],
                 Press=0,
-                Temp=df['temp'],
-                Salt=df['salinity'],
+                Temp=df_work['temp'],
+                Salt=df_work['salinity'],
                 k0=self.ph_k0,
                 k2=self.ph_k2,
                 Pcoefs=0
@@ -257,7 +264,7 @@ class PersistentResampler:
             logging.warning(f"Error calculating corrected pH: {e}")
             df['ph_corrected'] = pd.NA
         
-        # Set NaN for rows with missing input data
+        # Set NaN for rows with missing vrse data
         if mask.any():
             df.loc[mask, 'ph_corrected'] = pd.NA
         
